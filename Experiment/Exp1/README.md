@@ -1,0 +1,8 @@
+# Experiment 1: Paradigm Scripts
+This folder contains all the scripts needed to run the paradigm for Experiment 1. Note that you will need:
+* PsychToolbox version 3
+* Some sort of stimuli in the Stimuli folders (these are missing here due to licensing)
+
+To run, execute the <b>run_bCFS.m</b> file in MATLAB (built on version r2016a) and change to folder current directory (containing all the files described here).
+
+Behavioural data will be saved in .mat files in the Output subfolder.
