@@ -333,9 +333,21 @@ for s = 1:length(subjects)
                   emotion_idx(~outliers & correct_responses),... % emotion (1 = neutral, 2 = fearful)
                   expectation_idx(~outliers & correct_responses),... % expectation (1 = expected, 2 = unexpected)                 
                   rt(correct_responses & ~outliers)]; % rt
-                  
-    
+
 end
+
+% Save trial_data (to be used in LME analysis in R)
+header_names = {'Subject','Gender','Age','STAI','State','Trait','mcSTAI','mcState','mcTrait',...
+                'Order','Block','ExpTrial','Emotion','Expectation','RT'};        
+            
+commaHeader = [header_names; repmat({','}, 1, numel(header_names))]; %insert commaas
+textHeader = cell2mat(commaHeader(:)'); %cHeader in text with commas
+
+fid = fopen('trial_data.csv','w'); 
+fprintf(fid,'%s\n',textHeader);
+fclose(fid);
+
+dlmwrite('trial_data.csv',trial_data,'-append');
 
 % Get trial counts
 emotion_col = 14;
