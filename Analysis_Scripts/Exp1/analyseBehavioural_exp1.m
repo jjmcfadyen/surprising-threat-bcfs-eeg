@@ -347,11 +347,11 @@ fid = fopen('trial_data.csv','w');
 fprintf(fid,'%s\n',textHeader);
 fclose(fid);
 
-dlmwrite('trial_data.csv',trial_data,'-append');
+dlmwrite('trial_data_exp1.csv',trial_data,'-append');
 
 % Get trial counts
-emotion_col = 14;
-expectation_col = 15;
+emotion_col = 13;
+expectation_col = 14;
 
 cidx = {};
 cidx{1} = trial_data(:,emotion_col) == 1 & trial_data(:,expectation_col) == 1; % EN
