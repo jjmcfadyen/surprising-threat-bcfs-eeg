@@ -7,7 +7,7 @@ library(sjPlot)
 
 setwd("G:/Jessica/Private/Experiments/2_Experiment2_CFS/Final/Exp1_Behavioural/data_refined")
 
-CSV <- read.csv("trial_data.csv", header = TRUE)
+CSV <- read.csv("trial_data_exp1.csv", header = TRUE)
 
 # mean-centre trial number
 CSV$ExpTrial = CSV$ExpTrial - mean(CSV$ExpTrial)
