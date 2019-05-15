@@ -10,11 +10,11 @@ load(fullfile(dir_data,'stai.mat')); % load state-trait anxiety scores
 dir_results = 'D:\Scratch\bCFS_EEG_Reanalysis\results';
 
 subjects            = 1:30;
-remove_outliers     = 1; % 0 for no, 1 for yes
-remove_tooquick     = 1; % 0 for no, 1 for yes
-tooquick            = .5; % responses shorter than 200ms are artefactual
-outlier_def         = 5; % no. of std away from mean
-av_type             = 1; % 1 for mean, 2 for median
+remove_outliers     = 1;  % 0 for no, 1 for yes
+remove_tooquick     = 1;  % 0 for no, 1 for yes
+remove_tooslow      = 1;   % 0 for no, 1 for yes
+tooquick            = .5; % responses shorter than 500ms are artefactual
+tooslow             = 10;  % responses longer than 10s are too slow
 
 block_include = 1:8; % blocks to analyse (i.e. exclude first 2 for learning)
 
@@ -38,6 +38,18 @@ for s = 1:length(subjects)
     hits = ~isnan(accuracy);
     misses = isnan(accuracy);
     
+    % Get responses
+    try
+        orientation = trial_info.orientation';
+        orientation = orientation(:);
+        responses = orientation;
+        responses(accuracy == 0 & responses == 1) = 2;
+        responses(accuracy == 0 & responses == 2) = 1;
+    catch
+        orientation = nan(length(trials),1);
+        responses = nan(length(trials),1);
+    end
+    
     % Get index of condition types
     trials = trial_info.trials';
     trials = trials(:);
@@ -53,8 +65,9 @@ for s = 1:length(subjects)
     rt = rt(:);
     
     % Get index of how long ago the same expression was shown (i.e. how 'surprising' it is)
-    surprise_idx = zeros(size(trial_info.trials)); % lower number = more surprising
+    surprise_idx = nan(size(trial_info.trials)); % lower number = more surprising
     for b = 1:size(trial_info.trials,1)
+        
         bTrials = trial_info.trials(b,:);
         emotion_idx = bTrials == 11 | bTrials == 12 | bTrials == 41 | bTrials == 42; % 0 for neutral, 1 for fearful
         if sum(emotion_idx == 0) > sum(emotion_idx == 1) % neutral block
@@ -62,18 +75,29 @@ for s = 1:length(subjects)
         elseif sum(emotion_idx == 1) > sum(emotion_idx == 0) % fearful block
             deviants = 0;
         end
-        deviant_idx = [0 find(emotion_idx == deviants) length(emotion_idx)];
-        for sec = 2:length(deviant_idx)
-            if sec == length(deviant_idx)
-                this_idx = deviant_idx(sec-1)+1:deviant_idx(sec);
+        
+        % see how surprising each deviant is
+        deviant_idx = find(emotion_idx == deviants);
+        surprise_idx(b,deviant_idx) = [deviant_idx(1) diff(deviant_idx)];
+        
+        % see how many repetitions there have been of each standard
+        for i = 1:length(deviant_idx)
+            if i == 1
+                these_trials = 1:deviant_idx(i)-1;
+                rep_idx = fliplr([1:length(these_trials)] - length(these_trials));
             else
-                this_idx = deviant_idx(sec-1)+1:deviant_idx(sec)-1;
+                these_trials = deviant_idx(i-1)+1:deviant_idx(i)-1;
+                rep_idx = fliplr([1:length(these_trials)]- length(these_trials));
             end
-            surprise_idx(b,this_idx) = cumsum(ones(1,length(this_idx))); 
+            surprise_idx(b,these_trials) = rep_idx;
         end
+        these_trials = deviant_idx(end)+1:size(surprise_idx,2);
+        surprise_idx(b,these_trials) = fliplr([1:length(these_trials)]- length(these_trials));
+        
     end
     surprise_idx = surprise_idx';
     surprise_idx = surprise_idx(:);
+    surprise_idx(isnan(surprise_idx)) = 99; % so that I can find them in R later
            
     %% Save individual trial data
     
@@ -108,7 +132,9 @@ for s = 1:length(subjects)
                     surprise_idx,... % how frequently the emotion has been presented recently (lower number = more surprising)
                     emotion_idx,... % emotion (1 = neutral, 2 = fearful)
                     expectation_idx,... % expectation (1 = expected, 2 = unexpected)
-                    rt]; % rt
+                    rt,... % rt
+                    responses,... % response type (left or right)
+                    orientation]; % left or right
 
     % Select only correct responses
     subject_long_form = subject_long_form(accuracy == 1,:);
@@ -116,14 +142,17 @@ for s = 1:length(subjects)
     
     % Identify fast outliers
     if remove_tooquick
-         outliers_fast = subject_long_form(:,end) < tooquick;
+         outliers_fast = subject_long_form(:,14) < tooquick;
     else outliers_fast = zeros(ntrials,1);
     end
     OVERALL.outliers_fast = [OVERALL.outliers_fast; sum(outliers_fast)];
     
     % Identify extremely slow responses
-    outliers_slow = subject_long_form(:,end) > (mean(subject_long_form(:,end)) + outlier_def*(std(subject_long_form(:,end))));
-    OVERALL.outliers_slow = [ OVERALL.outliers_slow; sum(outliers_slow)];
+    if remove_tooslow
+         outliers_slow = subject_long_form(:,14) > tooslow;
+    else outliers_slow = zeros(ntrials,1);
+    end
+    OVERALL.outliers_slow = [OVERALL.outliers_slow; sum(outliers_slow)];
                
     outliers = outliers_slow | outliers_fast;
     
@@ -139,7 +168,7 @@ end
 
 % Save trial_data (to be used in LME analysis in R)
 header_names = {'Subject','Gender','Age','STAI','State','Trait',...
-                'Order','Block','ExpTrial','SurpriseIdx','Emotion','Expectation','RT'};        
+                'Order','Block','BlockTrial','ExpTrial','SurpriseIdx','Emotion','Expectation','RT','Response','Orientation'};        
             
 commaHeader = [header_names; repmat({','}, 1, numel(header_names))]; %insert commaas
 textHeader = cell2mat(commaHeader(:)'); %cHeader in text with commas

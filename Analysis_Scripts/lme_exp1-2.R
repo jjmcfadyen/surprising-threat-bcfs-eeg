@@ -6,7 +6,16 @@ library(dplyr)
 
 setwd("D:/Scratch/bCFS_EEG_Reanalysis/results")
 
-CSV <- read.csv("trial_data_exp2.csv", header = TRUE)
+exp1 <- read.csv("trial_data_exp1.csv", header = TRUE)
+exp2 <- read.csv("trial_data_exp2.csv", header = TRUE)
+exp1 <- exp1[,c(1:15,17)]
+
+exp1_subjects <- unique(exp1$Subject) # how many subjects in exp 1?
+exp2$Subject = exp2$Subject + tail(exp1_subjects,n=1) # add this number to exp. 2 so it goes up to 63 (no repeats of subject numbers)
+
+CSV <- rbind(exp1,exp2)
+CSV$Experiment <- c(rep("1",dim(exp1)[1]),
+                    rep("2",dim(exp2)[1]))
 
 # change category numbers to words
 CSV$Gender[which(CSV$Gender == 1)] = "male"
@@ -25,14 +34,15 @@ CSV$ExpTrial = CSV$ExpTrial - mean(CSV$ExpTrial)
 CSV$Block = CSV$Block - mean(CSV$Block)
 
 # compare models
-m0 <- lmer(RT ~ (1+Block|Subject) + STAI + Block, data=CSV, REML=FALSE)
-m1 <- lmer(RT ~ Emotion + (1+Emotion+Block|Subject) + STAI + Block, data=CSV, REML=FALSE)
-m2 <- lmer(RT ~ Expectation + (1+Expectation+Block|Subject) + STAI + Block, data=CSV, REML=FALSE)
-m3 <- lmer(RT ~ Emotion + Expectation + (1+Emotion+Expectation+Block|Subject) + STAI + Block, data=CSV, REML=FALSE)
-m4 <- lmer(RT ~ Emotion*Expectation + (1+Emotion*Expectation+Block|Subject) + STAI + Block, data=CSV, REML=FALSE)
+m0 <- lmer(RT ~ (1+Block|Subject) + Block + Experiment + STAI, data=CSV, REML=FALSE)
+m1 <- lmer(RT ~ Emotion + (1+Emotion+Block|Subject) + Block + Experiment + STAI, data=CSV, REML=FALSE)
+m2 <- lmer(RT ~ Expectation + (1+Expectation+Block|Subject) + Block + Experiment + STAI, data=CSV, REML=FALSE)
+m3 <- lmer(RT ~ Emotion + Expectation + (1+Emotion+Expectation+Block|Subject) + Block + Experiment + STAI, data=CSV, REML=FALSE)
+m4 <- lmer(RT ~ Emotion*Expectation + (1+Emotion*Expectation+Block|Subject) + Block + Experiment + STAI, data=CSV, REML=FALSE)
 
 anova(m0,m1,m2,m3,m4)
 
+# WINNING MODEL = M4 (interaction model)
 # WINNING MODEL = M4 (interaction model)
 LSM <- as.data.frame(lsmeans(m4, pairwise~Expectation|Emotion))
 actual_means <- CSV %>% group_by(Emotion, Expectation) %>% summarise(mean = mean(RT), sd = sd(RT)) # get actual data means
@@ -51,7 +61,7 @@ ggplot(CSV, aes(y=fit, x=RT)) +
   geom_abline(intercept=0,slope=1) + 
   scale_fill_viridis() + 
   theme_classic() + 
-  coord_cartesian(xlim=c(.5,3),ylim=c(1,2.5))
+  coord_cartesian(xlim=c(.5,10),ylim=c(1,7))
 
 library(MuMIn)
 r.squaredGLMM(m4)
@@ -89,6 +99,8 @@ LSM$Condition <- 1:4
 LSM$Upper <- LSM$lsmeans.lsmean + LSM$lsmeans.SE
 LSM$Lower <- LSM$lsmeans.lsmean - LSM$lsmeans.SE
 
+CSV$Subject <- sprintf("%02d", as.numeric(CSV$Subject))
+
 ggplot() + 
   geom_point(data=CSV, aes(x = Condition, y = fit, color = Subject), position="jitter", alpha=.1) + 
   stat_summary(data=CSV, aes(x = Condition, y = fit, fill = as.character(Subject)), fun.y=mean, 
@@ -97,4 +109,4 @@ ggplot() +
   geom_point(data=LSM, aes(x=Condition,y=lsmeans.lsmean), size=5, pch=3, color="black", stroke=2.5) +
   scale_color_viridis(discrete=TRUE) + scale_fill_viridis(discrete=TRUE) + 
   theme_classic() + 
-  coord_cartesian(ylim=c(1,2.5))
+  coord_cartesian(ylim=c(1,6.5))
