@@ -95,9 +95,10 @@ ggplot() +
   stat_summary(data=CSV, aes(x = Condition, y = fit, fill = as.character(Subject)), fun.y=mean, 
                size=4, pch=24, color="black", alpha=.7, position_dodge(width=.5), geom = "point", stroke=1.15) + 
   
-  geom_errorbar(data=LSM, aes(x=Condition,ymin=Lower,ymax=Upper),width=0,size=1,color="black") + 
+  geom_errorbar(data=LSM, aes(x=Condition,ymin=Lower,ymax=Upper),width=0,size=2,color="black") + 
   geom_line(data=LSM, aes(x=Condition,y=lsmeans.lsmean),color="black", size=1.3) + 
   geom_point(data=LSM, aes(x=Condition,y=lsmeans.lsmean), size=5, pch=21, fill=mean_colour, color="black", stroke=2) +
+  geom_errorbar(data=LSM, aes(x=Condition,ymin=Lower,ymax=Upper),width=0,size=1,color=mean_colour) + 
   
   scale_color_viridis(discrete=TRUE) + scale_fill_viridis(discrete=TRUE) + 
   theme_classic() + 

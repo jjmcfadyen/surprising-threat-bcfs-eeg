@@ -219,7 +219,7 @@ for subj = 1:length(subjects)
         cfg.viewmode = 'vertical';
         ft_databrowser(cfg, data);
         
-        bad_channels = input('Any bad channels to interpolate? type {''Cz'',''Fp1''} or similar, or ENTER to skip: ');
+        bad_channels = input('Any bad channels to interpolate? Type {''Cz'',''Fp1''} or similar, or ENTER to skip: ');
         
         if ~isempty(bad_channels)
             cfg = [];
@@ -234,7 +234,7 @@ for subj = 1:length(subjects)
         
         cfg = [];
         cfg.method = 'runica'; % this is the default and uses the implementation from EEGLAB
-        cfg.demean = 'no';
+        cfg.demean = 'no'; % doesn't seem to make sense for the RL epochs... (unless the demeaning is done for the entire trial?)
         cfg.channel = channel; 
         comp = ft_componentanalysis(cfg, data);
         
