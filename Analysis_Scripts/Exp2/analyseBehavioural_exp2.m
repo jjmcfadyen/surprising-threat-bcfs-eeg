@@ -23,6 +23,7 @@ long_form = [];
 OVERALL = [];
 OVERALL.outliers_fast = [];
 OVERALL.outliers_slow = [];
+OVERALL.accuracy = [];
 for s = 1:length(subjects)
     
     % Load trial info
@@ -158,6 +159,12 @@ for s = 1:length(subjects)
 
     % Pool together
     long_form = [long_form; subject_long_form];
+    
+    % Accuracy
+    OVERALL.accuracy(s,1) = mean(accuracy(EN & (rt > tooquick & rt < tooslow)));
+    OVERALL.accuracy(s,2) = mean(accuracy(UN & (rt > tooquick & rt < tooslow)));
+    OVERALL.accuracy(s,3) = mean(accuracy(EF & (rt > tooquick & rt < tooslow)));
+    OVERALL.accuracy(s,4) = mean(accuracy(UF & (rt > tooquick & rt < tooslow)));
     
 end
 
