@@ -777,9 +777,6 @@ switch contrast
         stat_idx = stat.time(find(stat.prob < .05));
         scatter(stat_idx,ones(length(stat_idx),1)*-10,5,'filled','k'); hold on
         
-        stat_idx = stat.time(find(stat_neut_cov.prob < .05));
-        scatter(stat_idx,ones(length(stat_idx),1)*-11.5,5,'filled','MarkerFaceColor',these_colours(1,:)); hold on
-        
         stat_idx = stat.time(find(stat_fear_cov.prob < .05));
         scatter(stat_idx,ones(length(stat_idx),1)*-13,5,'filled','MarkerFaceColor',these_colours(2,:)); hold on
         
@@ -789,43 +786,35 @@ set(gca,'TickLength',[0 0])
 
 %% Draw covariate
 
-% these_colours = [mean(colours(1:2,:),1);
-%                  mean(colours(3:4,:),1)];
-% 
-% channel_idx = [];
-% for chan = 1:length(channel)
-%     for c = 1:length(grand_neut_pred.label)
-%         if strmatch(grand_neut_pred.label{c},channel{chan})
-%             channel_idx = [channel_idx,c];
-%         end
-%     end
-% end
-% 
-% d = [];
-% for subj = 1:length(neut_pred)
-%     d(1,subj,:) = mean(neut_pred{subj}.avg(channel_idx,:),1);
-%     d(2,subj,:) = mean(fear_pred{subj}.avg(channel_idx,:),1);
-% end
-% 
-% mu = [];
-% mu(1,:) = mean(d(1,:,stat_neut_cov.prob < .05),3);
-% mu(2,:) = mean(d(1,:,stat_fear_cov.prob < .05),3);
-% 
-% figure
-% for i = 1:2
-%     subplot(1,2,i)
-%     scatter(design(:,i)',mu(i,:),'filled','MarkerFaceColor',these_colours(i,:),'MarkerFaceAlpha',.5,'MarkerEdgeColor','k'); hold on
-%     f = polyfit(design(:,i)',mu(i,:),1);
-%     refline(f(1),f(2)); hold on
-%     ax = gca;
-%     plot([0 0],ax.YLim,'k'); hold on
-%     plot(ax.XLim,[0 0],'k');
-%     if i == 1
-%         title([num2str(round(stat.time(find(stat_neut_cov.prob < .05,1,'first')),3)) ' to ' num2str(round(stat.time(find(stat_neut_cov.prob < .05,1,'last')),3)) ' ms'])
-%     elseif i == 2
-%         title([num2str(round(stat.time(find(stat_fear_cov.prob < .05,1,'first')),3)) ' to ' num2str(round(stat.time(find(stat_fear_cov.prob < .05,1,'last')),3)) ' ms'])
-%     end
-%     ylabel('More positive EEG activity for surprise')
-%     xlabel('Faster for Surprise <---------> Faster for Expected')
-% end
+these_colours = [mean(colours(1:2,:),1);
+                 mean(colours(3:4,:),1)];
+
+channel_idx = [];
+for chan = 1:length(channel)
+    for c = 1:length(grand_neut_pred.label)
+        if strmatch(grand_neut_pred.label{c},channel{chan})
+            channel_idx = [channel_idx,c];
+        end
+    end
+end
+
+d = [];
+for subj = 1:length(neut_pred)
+    d(1,subj,:) = mean(neut_pred{subj}.avg(channel_idx,:),1);
+    d(2,subj,:) = mean(fear_pred{subj}.avg(channel_idx,:),1);
+end
+
+mu = [];
+mu(1,:) = mean(d(1,:,stat_neut_cov.prob < .05),3);
+mu(2,:) = mean(d(1,:,stat_fear_cov.prob < .05),3);
+
+figure
+for i = 1:2
+    subplot(1,2,i)
+    scatter(design(:,i)',mu(i,:),'filled','MarkerFaceColor',these_colours(i,:),'MarkerFaceAlpha',.5,'MarkerEdgeColor','k'); hold on
+    ax = gca;
+    plot([0 0],ax.YLim,'k'); hold on
+    plot(ax.XLim,[0 0],'k');
+    title([num2str(stat.time(stat_neut_cov.prob < .05,1,'first')
+end
 
