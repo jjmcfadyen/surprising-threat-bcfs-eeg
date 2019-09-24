@@ -103,3 +103,34 @@ ggplot() +
   scale_color_viridis(discrete=TRUE) + scale_fill_viridis(discrete=TRUE) + 
   theme_classic() + 
   coord_cartesian(ylim=c(1,2.5))
+
+#####################
+setwd("C:/Users/drjes/Pictures")
+
+colours <- c("#8F4BFF","#337DFF","#E51A1A","#FF9300")
+dark_colours <- c("#531075","#174699","#810E0E","#A45F00")
+
+p <- ggplot() + 
+  
+  geom_jitter(data=CSV,aes(x=Condition,y=RT,fill=Condition,color=Condition),
+              size=2, shape=20, alpha=.2) + 
+  theme_classic() + 
+  scale_fill_manual(values=colours) + scale_color_manual(values=colours) +
+  coord_cartesian(ylim=c(0.5,3))
+tiff("exp2_lme.tiff",res=300,width=6,height=8,units='in')
+p
+dev.off()
+
+p <- ggplot() + 
+  geom_violin(data=CSV,aes(x=Condition,y=RT,fill=Condition,color=Condition),
+              scale="count", size=1) +
+  geom_point(data=LSM,aes(x=Condition,y=lsmeans.lsmean),size=2.5) + 
+  geom_errorbar(data=LSM, aes(x=Condition,ymin=Lower,ymax=Upper),width=0,size=1,color="black") +
+  geom_line(data=LSM, aes(x=Condition,y=lsmeans.lsmean),color="black", size=1) +
+  theme_classic() + 
+  scale_fill_manual(values=colours) + scale_color_manual(values=dark_colours) +
+  coord_cartesian(ylim=c(0.5,3))
+
+tiff("exp2_lme.tiff",res=300,width=6,height=8,units='in')
+p
+dev.off()
