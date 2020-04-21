@@ -81,27 +81,25 @@ CSV$Condition[CSV$Emotion == "fearful" & CSV$Expectation == "unexpected"] = 4
 
 CSV$Condition = as.character(CSV$Condition)
 
-LSM <- LSM[c(which(LSM$lsmeans.Emotion == "neutral" & LSM$lsmeans.Expectation == "expected"), # put in right order
-             which(LSM$lsmeans.Emotion == "neutral" & LSM$lsmeans.Expectation == "unexpected"),
-             which(LSM$lsmeans.Emotion == "fearful" & LSM$lsmeans.Expectation == "expected"),
-             which(LSM$lsmeans.Emotion == "fearful" & LSM$lsmeans.Expectation == "unexpected")),]
+LSM <- as.data.frame(lsmeans(m4, pairwise~Expectation|Emotion))
+LSM <- LSM[c(which(LSM$Emotion == "neutral" & LSM$Expectation == "expected"), # put in right order
+             which(LSM$Emotion == "neutral" & LSM$Expectation == "unexpected"),
+             which(LSM$Emotion == "fearful" & LSM$Expectation == "expected"),
+             which(LSM$Emotion == "fearful" & LSM$Expectation == "unexpected")),]
+LSM <- LSM[1:4,]
 LSM$Condition <- 1:4
-LSM$Upper <- LSM$lsmeans.lsmean + LSM$lsmeans.SE
-LSM$Lower <- LSM$lsmeans.lsmean - LSM$lsmeans.SE
+LSM$Upper <- LSM$asymp.LCL
+LSM$Lower <- LSM$asymp.UCL
 
-mean_colour = "#FFC300"
 ggplot() + 
-  geom_point(data=CSV, aes(x = Condition, y = fit, color = Subject), position="jitter", size=1, alpha=.1) + 
-  stat_summary(data=CSV, aes(x = Condition, y = fit, fill = as.character(Subject)), fun.y=mean, 
-               size=4, pch=24, color="black", alpha=.7, position_dodge(width=.5), geom = "point", stroke=1.15) + 
+  stat_summary(data=CSV, aes(x = Condition, y = fit, color = as.character(Subject)), fun.y=mean, 
+               size=2, pch=16, alpha=.7, position_dodge(width=.5), geom = "point", stroke=0.75) + 
   
-  geom_errorbar(data=LSM, aes(x=Condition,ymin=Lower,ymax=Upper),width=0,size=2,color="black") + 
-  geom_line(data=LSM, aes(x=Condition,y=lsmeans.lsmean),color="black", size=1.3) + 
-  geom_point(data=LSM, aes(x=Condition,y=lsmeans.lsmean), size=5, pch=21, fill=mean_colour, color="black", stroke=2) +
-  geom_errorbar(data=LSM, aes(x=Condition,ymin=Lower,ymax=Upper),width=0,size=1,color=mean_colour) + 
+  geom_errorbar(data=LSM, aes(x=Condition,ymin=Lower,ymax=Upper),width=0,size=1.5,color="black",alpha=0.6) + 
+  geom_point(data=LSM, aes(x=Condition,y=lsmean), size=3, pch=16, fill="black", color="black", stroke=2, alpha=0.8) +
   
   scale_color_viridis(discrete=TRUE) + scale_fill_viridis(discrete=TRUE) + 
-  theme_classic() + 
+  theme_classic() +
   coord_cartesian(ylim=c(1,2.5))
 
 #####################
