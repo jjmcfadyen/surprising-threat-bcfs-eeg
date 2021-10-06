@@ -104,7 +104,7 @@ for r = 1:length(rawfiles)
 %     D = chantype(D,find(contains(D.chanlabels,otherchan)),'Other');
 % 
 %     %% Average reference
-%     
+%       
 %     S           = struct;
 %     S.D         = D;
 %     S.refchan   = 'average';
@@ -115,21 +115,21 @@ for r = 1:length(rawfiles)
     
     D = spm_eeg_load(fullfile(dir_results,'1_converted',['Mspmeeg_' rawfiles{r}]));
     
-    % notch (10 Hz)
-    S           = struct;
-    S.D         = D;
-    S.band      = 'stop';
-    S.freq      = [9.5 10.5];
-    
-    D = spm_eeg_filter(S);
-    
-    % notch (20 Hz)
-    S           = struct;
-    S.D         = D;
-    S.band      = 'stop';
-    S.freq      = [19.5 20.5];
-    
-    D = spm_eeg_filter(S);
+%     % notch (10 Hz)
+%     S           = struct;
+%     S.D         = D;
+%     S.band      = 'stop';
+%     S.freq      = [9.5 10.5];
+%     
+%     D = spm_eeg_filter(S);
+%     
+%     % notch (20 Hz)
+%     S           = struct;
+%     S.D         = D;
+%     S.band      = 'stop';
+%     S.freq      = [19.5 20.5];
+%     
+%     D = spm_eeg_filter(S);
     
     % notch (50 Hz)
     S           = struct;

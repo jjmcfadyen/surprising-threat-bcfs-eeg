@@ -14,18 +14,15 @@ for exp = 1:2
     % Exclude subjects based on missed trials
     subjects = unique(T.Subject);
     N = length(subjects);
-    nmisses = nan(N,2);
-    for s = 1:N
-        nmisses(s,1) = sum(isnan(T.RT(T.Subject==s))); 
-        nmisses(s,2) = sum(isnan(T.RT(T.Subject==s))) / sum(T.Subject==s);
-    end
-    
-    excludeSubjects = find(nmisses(:,2) > .15);
-    if any(excludeSubjects)
-        disp(['Excluding subjects ' num2str(excludeSubjects')])
+
+    if exp==2
+        excludeSubjects = 3;
     end
     
     T(ismember(T.Subject,excludeSubjects),:) = [];
+    
+    % Mean-centre variables
+    T.STAI = T.STAI - nanmean(T.STAI);
 
     for st = 1:3
         
@@ -40,7 +37,7 @@ for exp = 1:2
             idx = T.Acc & ~T.Outlier & (contains(T.Type,'deviant') | contains(T.Type,'last'));
         end
 
-        lme = fitglme(T(idx,:), 'RT~Emotion*Expectation+(Emotion*Expectation|Subject)');
+        lme = fitglme(T(idx,:), 'RT~Emotion*Expectation+(1|Subject)');
         em = emmeans(lme);
         UNEN = contrasts_wald(lme,em,[-1 1 0 0]);
         UFEF = contrasts_wald(lme,em,[0 0 -1 1]);

@@ -20,6 +20,8 @@ conditionCodes  = [31 32
                    11 12
                    41 42];
 nCon = length(conditionLabels);
+
+load(fullfile(dir_data,'stai.mat')); % loads 'stai' variable
                
 %% Load data
 
@@ -43,6 +45,7 @@ N = length(subjects);
 trialdata = [];
 conditiondata = [];
 trialcount = [];
+demographics = array2table(nan(N,3),'variablenames',{'Subject','Age','Sex'});
 for s = 1:N
     
     schar = [];
@@ -56,6 +59,10 @@ for s = 1:N
     f = find(contains(subjects,schar));
     d = load(fullfile(filelist(f).folder,filelist(f).name));
     d = d.trial_info;
+    
+    demographics.Subject(s) = d.subject.num;
+    demographics.Age(s) = d.subject.age;
+    demographics.Sex(s) = d.subject.gender;
     
     subject = d.subject.num;
     
@@ -134,7 +141,12 @@ for s = 1:N
         trialdata = [trialdata; thislong];
     end
     
-    % multidimensional data matrix
+    % identify outliers by getting typical response time for correct trials
+    thisidx = ~isnan(thislong.RT) & thislong.Acc & thislong.RT > .5;
+    thislong.Outliers = zeros(size(thislong,1),1);
+    thislong.Outliers(thisidx) = abs(zscore(thislong.RT(thisidx))) > 3;
+    
+    % get trial counts and data for plotting
     for i = 1:3 % standard types (all, first, last)
         for c = 1:4
 
@@ -233,5 +245,17 @@ output.trialdata = trialdata;
 output.conditiondata = conditiondata;
 output.conditiondatadimensions = {'subject','mean or median','standard type: all, first, middle, last','condition: EN, UN, EF, UF'};
 output.trialcount = trialcount;
+
+output.demographics = demographics;
+
+if expnum==1 % last subject is missing the STAI info
+    output.demographics.STAI = [stai.full; NaN];
+    output.demographics.State = [stai.state; NaN];
+    output.demographics.Trait = [stai.trait; NaN];
+else
+    output.demographics.STAI = stai.full;
+    output.demographics.State = stai.state;
+    output.demographics.Trait = stai.trait;
+end
 
 end
