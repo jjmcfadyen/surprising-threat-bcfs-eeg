@@ -1,28 +1,28 @@
-function [BF,VF] = svdyeahyouknowme(Y,nBF,makePlots)
+function [BF,VF,Yhat] = svdyeahyouknowme(Y,nBF,makePlots)
 % nBF = Number of basis functions
 % Y = time x space
 
 %==========================================================================
 % Derive basis set and apply to data
 %==========================================================================
-mcY = Y - mean(Y);
+oM = mean(Y);
+mcY = Y - oM;
 
 [u,s,v]     = svd(mcY);                 % SVD
 ds          = diag(s);                  % Get scales for basis set
 BF          = u(:,1:nBF).*ds(1:nBF)';   % Apply scales to components of choice i.e up to nBF (temporal basis function)
-VF          = v(1:nBF,:)'*ds(1:nBF);   % spatial basis function
+VF          = v(1:nBF,:)'*ds(1:nBF);    % spatial basis function
 
 % if betas trend negatively, then flip them around
-for i = 1:size(BF,2)
-    bftrend = polyfit(1:size(BF,1),BF(:,i)',1);
-    if bftrend(1) < 0
-        BF(:,i) = BF(:,i) * (-1);
-    end
+bftrend = polyfit(1:size(BF,1),BF(:,1)',1);
+if bftrend(1) < 0
+    BF = BF * (-1);
 end
 
-bf          = [BF ones(length(BF),1)];  % Add constant term for GLM
-B           = pinv(bf) * Y;             % GLM
-Yhat        = bf(:,1:end-1)*B(1:end-1,:);                     % Reconstructed responses
+bf          = [BF ones(length(BF),1)];    % Add constant term for GLM
+B           = pinv(bf) * Y;               % GLM
+Yhat        = bf(:,1:end-1)*B(1:end-1,:); % Reconstructed responses
+Yhat        = Yhat + oM;                  % put the mean back in
 
 %==========================================================================
 %                       *******I Love you********

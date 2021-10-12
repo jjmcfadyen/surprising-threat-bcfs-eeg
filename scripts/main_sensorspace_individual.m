@@ -396,7 +396,6 @@ for s = 1:N
 end
 
 
-
 save(fullfile(dir_results,'rtcorr_subjectLevel.mat'),'ST');
 
 % Group level analysis
@@ -633,11 +632,12 @@ for s = 1:N
     disp(schar)
     disp('====================================')
 
-    if ~includeRT
-        ST = cell(length(standardType),length(baselineCorrect),6);
-    else
-        ST = cell(length(standardType),length(baselineCorrect),4);
-    end
+%     if ~includeRT
+%         ST = cell(length(standardType),length(baselineCorrect),5);
+%     else
+%         ST = cell(length(standardType),length(baselineCorrect),4);
+%     end
+    ST = STATS{s};
     thisinterp = cell(length(standardType),length(baselineCorrect));
     for st = 3%1:length(standardType)
         for b = 1%:length(baselineCorrect)
@@ -725,9 +725,19 @@ for s = 1:N
                 cfg.statistic = 'indepsamplesT';
                 cfg.ivar = 1;
 
-                for i = 1:3 % interaction, neutral, fearful
+                for i = 3:5%1:5 % emotion, expectation, interaction, neutral pred, fearful pred
 
-                    if i==1 % within-block
+                    if i==1 % neutral - fearful
+                        
+                        A = ft_appenddata([],data{1},data{2});
+                        B = ft_appenddata([],data{3},data{4});
+                        
+                    elseif i==2 % expected - unexpected
+                        
+                        A = ft_appenddata([],data{1},data{3});
+                        B = ft_appenddata([],data{2},data{4});
+                        
+                    elseif i==3 % within-block interaction effect
 
                         avEF = ft_timelockanalysis([],data{3});
                         avEN = ft_timelockanalysis([],data{1});
@@ -742,12 +752,12 @@ for s = 1:N
                             B.trial{trl} = B.trial{trl} - avEF.avg; % minus average EN
                         end
 
-                    elseif i==2 % UN vs EF
+                    elseif i==4 % UN vs EF
 
                         A = data{2}; % UN
                         B = data{1}; % EF
 
-                    elseif i==3 % UF vs EN
+                    elseif i==5 % UF vs EN
 
                         A = data{4}; % UF
                         B = data{3}; % EN
@@ -849,408 +859,6 @@ end
 
 save(fullfile('D:\bCFS_EEG_Reanalysis\results\sensorspace',filterTag,savefilename),'STATS','interpchannels');
 
-%% SVD
-
-% load(fullfile(dir_results,'rtcorr_subjectLevel_cpp.mat')); % 'cpp','rt','subidx','sigchan','bestchan'
-
-gAmp = [];
-gLat = [];
-gDat = [];
-gBF = [];
-gVF = [];
-gOrig = [];
-allBetas = cell(1,N);
-figure
-for s = 1:N
-   
-    subject = subjects(s);
-    if subject < 10
-        schar = ['S0' num2str(subject)];
-    else
-        schar = ['S' num2str(subject)];
-    end
-    
-    disp('====================================')
-    disp(schar)
-    disp('====================================')
-
-    for st = 3%1:length(standardType)
-        for b = 1%:length(baselineCorrect)
-            
-            % Load
-            [SL,~,T,idx] = clean_data(fullfile(dir_data,'4_epoched',[schar '_FT_epoched_' standardType{st} 'Standards_bc' num2str(baselineCorrect(b)) '.mat'])); 
-            
-            fidx = find(idx);
-            nTrls = length(fidx);
-
-            % Filter at 6 Hz
-            cfg = [];
-            cfg.trials = fidx;
-%             if ~isempty(sigchan{s})
-%                 cfg.channel = sigchan{s};
-%             else
-%                 cfg.channel = SL.label(ismember(SL.label,{'Cz','C1','C2','CPz','CP1','CP2','Pz','P1','P2'}));
-                cfg.channel = SL.label(~ismember(SL.label,{'M1','M2','Nz','SNz','LH','RH','LV','UV','Status'}));
-%             end
-            nChan = length(cfg.channel);
-            cfg.lpfilter = 'yes';
-            cfg.lpfreq = 6;
-            SL = ft_preprocessing(cfg,SL);
-            
-            % Get average amplitude
-            y = nan(nTrls,nChan,length(SL.time{1}));
-            for trl = 1:nTrls
-                 y(trl,:,:) = SL.trial{trl};
-            end
-            
-            % SVD
-            m = squeeze(mean(y)); % average over trials to get mean response overall
-            [bf,vf] = svdyeahyouknowme(m',3,false);
-            
-            % (correct sign)
-            bfscaled = bf(:,1) + bf(:,2)*[-1,1];
-            [C,lags] = xcorr(bfscaled(:,1)',bfscaled(:,2)','coeff');
-            lagshift = lags(abs(C)==max(abs(C)));
-            if lagshift < 0 % if higher BF2 values shift the waveform to the left (i.e., earlier), then flip sign
-                bf(:,2) = bf(:,2)*(-1);
-            end
-            
-%             subplot(8,4,s)
-%             P = plot(bf(:,1) + bf(:,2)*linspace(-1,1,10),'linewidth',1.4); hold on
-%             cmap = colours(length(P),'viridis');
-%             for i = 1:length(P)
-%                 P(i).Color = cmap(i,:);
-%             end
-%             plot(bf(:,1),'k','linewidth',2.2)
-%             title(schar);
-%             drawnow
-            
-            gBF(s,:,:) = bf;
-            gVF(s,:) = vf;
-            
-            % Apply weights to individual trial data
-            newy = nan(nTrls,size(y,3));
-            betas = nan(nTrls,size(gBF,3)); % amplitude, latency
-            for trl = 1:nTrls
-                tmp = squeeze(y(trl,:,:))';
-                tmp = tmp - mean(tmp);
-                B = pinv(bf)*tmp;
-                yhat = bf*B;
-                newy(trl,:) = yhat*vf;
-                betas(trl,:) = mean(B,2);
-            end
-            allBetas{s} = T(idx,:);
-            allBetas{s}.beta1 = betas(:,1);
-            allBetas{s}.beta2 = betas(:,2);
-            allBetas{s}.beta3 = betas(:,3);
-            
-            % save to group variable (average across trials)
-            conditions = T.Condition(idx);
-            for c = 1:4
-                gAmp(s,c) = mean(betas(conditions==c,1));
-                gLat(s,c) = mean(betas(conditions==c,2));
-                gDat(s,c,:) = mean(newy(conditions==c,:));
-                gOrig(s,c,:,:) = mean(y(conditions==c,:,:));
-            end            
-        end
-    end
-end
-save(fullfile(dir_results,'svd_bf1-3.mat'),'gAmp','gLat','gDat','gBF','gVF','gOrig','allBetas');
-
-% Basis function
-y = squeeze(mean(gBF));
-sem = squeeze(std(gBF))/sqrt(size(gBF,1));
-upper = [y+sem]';
-lower = [y-sem]';
-
-x = linspace(-.1,3,size(gBF,2));
-cmap = [0, 255, 97;
-    188, 113, 255;
-    255, 170, 0]/255;
-
-figure
-for i = 1:3
-    patch([x fliplr(x)],[upper(i,:) fliplr(lower(i,:))],cmap(i,:),'facealpha',.2,'edgecolor','none','handlevisibility','off'); hold on
-    plot(x,y(:,i),'color',cmap(i,:),'linewidth',1.4); hold on
-end
-xlim(x([1 end]))
-set(gca,'ticklength',[0 0])
-xlabel('Time (seconds)')
-title('Temporal basis function')
-
-% First basis predicting second basis
-bf = squeeze(mean(gBF));
-
-figure
-for i = 1:2
-    subplot(1,2,i)
-    x = linspace(-0.1,3,length(bf));
-    P = plot(x,bf(:,1) + bf(:,i+1)*linspace(-1,1,10),'linewidth',1.4); hold on
-    cmap = colours(length(P),'viridis');
-    for i = 1:length(P)
-        P(i).Color = cmap(i,:);
-    end
-    plot(x,bf(:,1),'k','linewidth',2)  
-    title(['First basis scaled by basis #' num2str(i+1)])
-    xlim(x([1 end]))
-    set(gca,'ticklength',[0 0])
-end
-
-% Betas
-width = 0.25;
-linewidth = 2.5;
-cmap = [0, 242, 242;
-    0, 135, 255;
-    255, 181, 23;
-    255, 0, 0]/255;
-
-for i = 1:3 % basis functions
-    
-    % remove outlier trials per participant
-    dat = [];
-    for s = 1:N
-        if i==1
-            y = allBetas{s}.beta1;
-        elseif i==2
-            y = allBetas{s}.beta2;
-        elseif i==3
-            y = allBetas{s}.beta3;
-        end
-        outliers = abs(zscore(y)) > 3;
-        disp(['Removing ' num2str(sum(outliers)) ' for subject ' num2str(s)])
-        for c = 1:4
-            dat(s,c) = mean(zscore(y(allBetas{s}.Condition==c & ~outliers)));
-        end
-    end
-    
-    figure
-    for c = 1:4 % condition
-
-        % points
-        [x,y] = beeswarm(dat(:,c),4,width);
-        scatter(x+c,y,'markeredgecolor',cmap(c,:),'markerfacecolor',cmap(c,:),'markerfacealpha',.25,'markeredgealpha',.5); hold on
-
-        % boxplot
-        patch([c-width c+width c+width c-width],[quantile(y,.75),quantile(y,.75),quantile(y,.25),quantile(y,.25)],cmap(c,:),...
-            'facealpha',.5,'edgecolor',cmap(c,:)); hold on
-        plot([c-width c+width],repmat(quantile(y,.5),2,1),'color',cmap(c,:),'linewidth',linewidth); hold on
-        plot([c-width c+width],repmat(quantile(y,.25),2,1),'color',cmap(c,:),'linewidth',linewidth); hold on
-        plot([c-width c+width],repmat(quantile(y,.75),2,1),'color',cmap(c,:),'linewidth',linewidth); hold on
-        plot([c-width c-width],quantile(y,[.25 .75]),'color',cmap(c,:),'linewidth',linewidth); hold on
-        plot([c+width c+width],quantile(y,[.25 .75]),'color',cmap(c,:),'linewidth',linewidth); hold on
-
-    end
-end
-
-% LME
-ldat = [];
-for s = 1:N
-    tmp = allBetas{s};
-    tmp.beta1 = zscore(tmp.beta1);
-    tmp.beta2 = zscore(tmp.beta2);
-    tmp.beta3 = zscore(tmp.beta3);
-    outliers = abs(tmp.beta1) > 3 | abs(tmp.beta2) > 3 | abs(tmp.beta3) > 3;
-    ldat = [ldat; tmp(~outliers,:)];
-end
-
-lme = fitglme(ldat,'beta1 ~ Emotion*Expectation + (1|Subject)')
-lme = fitglme(ldat,'beta2 ~ Emotion*Expectation + (1|Subject)')
-lme = fitglme(ldat,'beta3 ~ Emotion*Expectation + (1|Subject)')
-
-
-figure
-for i = 1:3
-    
-    if i==1
-        tmp = ldat.beta1;
-    elseif i==2
-        tmp = ldat.beta2;
-    elseif i==3
-        tmp = ldat.beta3;
-    end
-    
-    y = [];
-    for s = 1:N
-        for c = 1:4
-            y(s,c) = mean(tmp(ldat.Subject==subjects(s) & ldat.Condition==c));
-        end
-    end
-    
-    m = mean(y);
-    sem = std(y)/sqrt(N);
-    upper = m+sem;
-    lower = m-sem;
-    
-    subplot(1,3,i)
-    bar(m); hold on
-    for c = 1:4
-        plot([c c],[lower(c) upper(c)],'k');
-    end
-end
-
-
-% Cross-correlation between conditions
-conditiontype = 'all'; % 'all' (4 conditions) or 'mismatch-within' (EN-UN/EF-UF) or 'mismatch-between' (EN-UF/EF-UN)
-
-allpred = [];
-allvpred = [];
-for s = 1:N
-    
-    % get predicted data
-    thisbf = squeeze(gBF(s,:,:));
-    pred = [];
-    switch conditiontype
-        case 'all'
-            for c = 1:4
-                dat = squeeze(gOrig(s,c,:,:))';
-                B = pinv([thisbf ones(length(thisbf),1)]) * dat;
-                pred(c,:,:) = thisbf * B(1:end-1,:);
-            end
-        case 'mismatch-within'
-            for c = 1:2
-                if c==1
-                    dat = squeeze(gOrig(s,2,:,:))' - squeeze(gOrig(s,1,:,:))'; % UN - EN
-                elseif c==2
-                    dat = squeeze(gOrig(s,4,:,:))' - squeeze(gOrig(s,3,:,:))'; % UF - EF
-                end
-                B = pinv([thisbf ones(length(thisbf),1)]) * dat;
-                pred(c,:,:) = thisbf * B(1:end-1,:);
-            end
-        case 'mismatch-between'
-            for c = 1:2
-                if c==1
-                    dat = squeeze(gOrig(s,2,:,:))' - squeeze(gOrig(s,3,:,:))'; % UN - EF
-                elseif c==2
-                    dat = squeeze(gOrig(s,4,:,:))' - squeeze(gOrig(s,1,:,:))'; % UF - EN
-                end
-                B = pinv([thisbf ones(length(thisbf),1)]) * dat;
-                pred(c,:,:) = thisbf * B(1:end-1,:);
-            end
-    end
-    
-    vpred = [];
-    for c = 1:size(pred,1)
-        vpred(c,:) = squeeze(pred(c,:,:)) * gVF(s,:)';
-    end
-    
-    allpred(s,:,:,:) = pred;
-    allvpred(s,:,:) = vpred;
-end
-
-x = linspace(-.1,3,size(allpred,3));
-if strcmp(conditiontype,'all')
-    cmap = [0, 242, 242;
-        0, 135, 255;
-        255, 181, 23;
-        255, 0, 0]/255;
-else
-    cmap = [ 0, 135, 255;
-    255, 0, 0]/255;
-end
-
-figure
-for chan = 1:size(allpred,4)
-    subplot(8,8,chan);
-    title(SL.label{chan})
-    for c = 1:size(allpred,2)
-        y = squeeze(allpred(:,c,:,chan));
-        m = mean(y);
-        sem = std(y)/sqrt(N);
-        upper = m+sem;
-        lower = m-sem;
-        
-        patch([x fliplr(x)],[upper fliplr(lower)],cmap(c,:),'facealpha',.2,'edgecolor','none'); hold on
-        plot(x,m,'color',cmap(c,:),'linewidth',1.4); hold on
-    end
-end
-
-switch conditiontype
-    case 'all'
-        combos = [
-            1 2 3 4 
-            1 3 2 4
-            1 1 2 2;
-            1 1 3 3;
-            3 3 4 4;
-            2 2 4 4
-            ];
-    case {'mismatch-within','mismatch-between'}
-        combos = [1 2];
-end
-
-startpoint = findMin(0.25,x); % only look from 250 ms onwards
-
-xcoef = [];
-% peaktime = []; % time of first peak
-for s = 1:N
-
-    pred = squeeze(allpred(s,:,:,:));
-    
-    % do cross-correlation for each channel
-    thisxcoef = nan(size(combos,1),size(pred,3));
-    for c = 1:size(combos,1)
-        for chan = 1:size(pred,3)
-            
-            if strcmp(conditiontype,'all')
-                y1 = mean(pred(combos(c,1:2),:,chan),1);
-                y2 = mean(pred(combos(c,3:4),:,chan),1);
-            else
-                y1 = squeeze(pred(combos(c,1),:,chan));
-                y2 = squeeze(pred(combos(c,2),:,chan));
-            end
-            [C,lags] = xcorr(y1,y2,'coef');
-            thisxcoef(c,chan) = lags(abs(C)==max(abs(C)));
-        end
-    end
-    xcoef(s,:,:) = thisxcoef;
-    
-%     for chan = 1:size(pred,3)
-%         switch conditiontype
-%             case 'all'
-%                 y = squeeze(pred(:,:,chan));
-%             case 'mismatch-within'
-%                 y = [squeeze(pred(2,:,chan))-squeeze(pred(1,:,chan));   % UN-EN
-%                      squeeze(pred(4,:,chan))-squeeze(pred(3,:,chan))];  % UF-EF
-%             case 'mismatch-between'
-%                 y = [squeeze(pred(2,:,chan))-squeeze(pred(3,:,chan));   % UN-EF
-%                      squeeze(pred(4,:,chan))-squeeze(pred(1,:,chan))];  % UF-EN
-%         end
-%         for c = 1:size(y,1)
-%             sy = smooth(y(c,:),length(y),'sgolay',9);
-%             [namp,nlocs] = findpeaks(-sy(startpoint:end));
-%             [pamp,plocs] = findpeaks(sy(startpoint:end));
-%             peaktime(s,c,chan) = min([nlocs; plocs]) + startpoint;
-%         end
-%     end
-end
-
-figure
-bar(mean(xcoef))
-
-pvals = [];
-for i = 1:size(combos,1)
-    hold on; plot([i i],[mean(xcoef(:,i))+(std(xcoef(:,i))/sqrt(N)) mean(xcoef(:,i))-(std(xcoef(:,i))/sqrt(N))],'k');
-    [h,p] = ttest(xcoef(:,i));
-    pvals(i,1) = round(p,3);
-end
-set(gca,'xticklabels',{'N-F','E-U','EN-UN','EN-EF','EF-UF','UN-UF'})
-
-
-figure
-for chan = 1:size(peaktime,3)
-    subplot(8,8,chan)
-    y = squeeze(peaktime(:,:,chan));
-    m = mean(y);
-    sem = std(y)/sqrt(N);
-    upper = m+sem;
-    lower = m-sem;
-
-    bar(m); hold on
-    for c = 1:4
-        plot([c c],[lower(c) upper(c)],'k');
-    end
-end
-
 %% Group level
 
 theseSubjects = setdiff(1:N,[3]); % subject 3 missed about half the trials
@@ -1276,18 +884,18 @@ end
 
 load(fullfile('D:\bCFS_EEG_Reanalysis\results\sensorspace',filterTag,filename)); % loads 'STATS' variable
 
-% load('D:\bCFS_EEG_Reanalysis\data\Exp2\behav\stai.mat'); % loads 'stai' variable
-% stai = table2array(struct2table(stai));
-% stai = stai(theseSubjects,:);
-% for i = 1:size(stai,2)
-%     stai(:,i) = stai(:,i) - mean(stai(:,i));
-% end
-% stai = array2table(stai,'variablenames',{'full','state','trait'});
+load('D:\bCFS_EEG_Reanalysis\data\Exp2\behav\stai.mat'); % loads 'stai' variable
+stai = table2array(struct2table(stai));
+stai = stai(theseSubjects,:);
+for i = 1:size(stai,2)
+    stai(:,i) = stai(:,i) - mean(stai(:,i));
+end
+stai = array2table(stai,'variablenames',{'full','state','trait'});
 
 for st = 3%1:length(standardType)
     for b = 1%:length(baselineCorrect)
         stat = cell(1,3);
-        for i = 1%:3 % 1: [UN-EF]-[UF-EN], 2: UN-EF, 3: UF-EN
+        for i = 1%:3 % 1) N-F, 2) E-U, 3) [UN-EF]-[UF-EN], 4) UN-EF, 5) UF-EN
             
             if strcmp(locking,'response')
                 minrt = nan(N,3); % min time, max time, num samples
@@ -1299,7 +907,7 @@ for st = 3%1:length(standardType)
             end
             
             % Plot the prediction error for each emotion type
-            if i==1
+            if i==3
                 
                 C = 2;
                 

@@ -2,20 +2,20 @@ function analyse_behav
 
 %% Experiments
 
-for exp = 1:2
+for experiment = 1:2
     
     disp('=====================================================================')
-    disp(['=== EXPERIMENT ' num2str(exp) ' ===================================================='])
+    disp(['=== EXPERIMENT ' num2str(experiment) ' ===================================================='])
     disp('=====================================================================')
 
-    output = preprocess_behav(exp,false);
+    output = preprocess_behav(experiment,false);
     T = output.trialdata;
     
     % Exclude subjects based on missed trials
     subjects = unique(T.Subject);
     N = length(subjects);
 
-    if exp==2
+    if experiment==2
         excludeSubjects = 3;
     end
     
