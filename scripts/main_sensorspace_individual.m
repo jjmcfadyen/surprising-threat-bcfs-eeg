@@ -618,7 +618,7 @@ cfg.layout = 'biosemi64.lay';
 neighbours = ft_prepare_neighbours(cfg);
 
 STATS = cell(1,N);
-interpchannels = cell(N,1);
+% interpchannels = cell(N,1);
 for s = 1:N
    
     subject = subjects(s);
@@ -632,15 +632,17 @@ for s = 1:N
     disp(schar)
     disp('====================================')
 
-%     if ~includeRT
-%         ST = cell(length(standardType),length(baselineCorrect),5);
-%     else
-%         ST = cell(length(standardType),length(baselineCorrect),4);
-%     end
-    ST = STATS{s};
+    if ~includeRT
+        ST = cell(length(standardType),length(baselineCorrect),8);
+    else
+        ST = cell(length(standardType),length(baselineCorrect),4);
+    end
+    
     thisinterp = cell(length(standardType),length(baselineCorrect));
     for st = 3%1:length(standardType)
         for b = 1%:length(baselineCorrect)
+            
+            ST(st,b,1:2) = oldstats{s}(st,b,1:2); % insert old (temporary fix for now)
             
             % Load
             [SL,RL,T,idx] = clean_data(fullfile(dir_data,'4_epoched',[schar '_FT_epoched_' standardType{st} 'Standards_bc' num2str(baselineCorrect(b)) '.mat'])); 
@@ -725,7 +727,7 @@ for s = 1:N
                 cfg.statistic = 'indepsamplesT';
                 cfg.ivar = 1;
 
-                for i = 3:5%1:5 % emotion, expectation, interaction, neutral pred, fearful pred
+                for i = 3:8 %1:8 % emotion, expectation, (WITHIN BLOCK) interaction, neutral pred, fearful pred, (WITHIN EMOTION) interaction, neutral pred, fearful pred
 
                     if i==1 % neutral - fearful
                         
@@ -744,24 +746,48 @@ for s = 1:N
                         
                         A = data{2}; % UN
                         for trl = 1:length(A.trial)
-                            A.trial{trl} = A.trial{trl} - avEN.avg; % minus average EF
+                            A.trial{trl} = A.trial{trl} - avEF.avg; % minus average EF
                         end
                         
                         B = data{4}; % UF
                         for trl = 1:length(B.trial)
-                            B.trial{trl} = B.trial{trl} - avEF.avg; % minus average EN
+                            B.trial{trl} = B.trial{trl} - avEN.avg; % minus average EN
                         end
 
                     elseif i==4 % UN vs EF
 
                         A = data{2}; % UN
-                        B = data{1}; % EF
+                        B = data{3}; % EF
 
                     elseif i==5 % UF vs EN
 
                         A = data{4}; % UF
-                        B = data{3}; % EN
+                        B = data{1}; % EN
+                        
+                    elseif i==6 % within-emotion interaction effect
 
+                        avEF = ft_timelockanalysis([],data{3});
+                        avEN = ft_timelockanalysis([],data{1});
+                        
+                        A = data{2}; % UN
+                        for trl = 1:length(A.trial)
+                            A.trial{trl} = A.trial{trl} - avEN.avg; % minus average EN
+                        end
+                        
+                        B = data{4}; % UF
+                        for trl = 1:length(B.trial)
+                            B.trial{trl} = B.trial{trl} - avEF.avg; % minus average EF
+                        end
+
+                    elseif i==7 % UN vs EN
+
+                        A = data{2}; % UN
+                        B = data{1}; % EN
+
+                    elseif i==8 % UF vs EF
+
+                        A = data{4}; % UF
+                        B = data{3}; % EF
                     end
 
                     %{
@@ -857,7 +883,8 @@ switch locking
         savefilename = ['RL_' savefilename];
 end
 
-save(fullfile('D:\bCFS_EEG_Reanalysis\results\sensorspace',filterTag,savefilename),'STATS','interpchannels');
+save(fullfile('D:\bCFS_EEG_Reanalysis\results\sensorspace',filterTag,savefilename),...
+    'STATS','interpchannels','-V7.3');
 
 %% Group level
 
@@ -895,7 +922,7 @@ stai = array2table(stai,'variablenames',{'full','state','trait'});
 for st = 3%1:length(standardType)
     for b = 1%:length(baselineCorrect)
         stat = cell(1,3);
-        for i = 1%:3 % 1) N-F, 2) E-U, 3) [UN-EF]-[UF-EN], 4) UN-EF, 5) UF-EN
+        for i = 1%:3 % emotion, expectation, (WITHIN BLOCK) interaction, neutral pred, fearful pred, (WITHIN EMOTION) interaction, neutral pred, fearful pred
             
             if strcmp(locking,'response')
                 minrt = nan(N,3); % min time, max time, num samples
@@ -907,18 +934,20 @@ for st = 3%1:length(standardType)
             end
             
             % Plot the prediction error for each emotion type
-            if i==3
-                
-                C = 2;
+            if i==3 || i==6
                 
                 pdata = cell(N,2);
                 for s = 1:N
-                    for c = 1:C
-                        thisstat = STATS{s}{st,b,c+1};
+                    for c = 1:2
+                        thisstat = STATS{s}{st,b,i+c};
                         pdata{s,c}.dimord = thisstat.dimord;
                         pdata{s,c}.label = thisstat.label;
                         pdata{s,c}.time = thisstat.time;
-                        pdata{s,c}.avg = zscore(thisstat.stat);
+                        
+                        thisavg = thisstat.stat;
+                        thisavg = (thisavg - mean(thisavg(:))) / std(thisavg(:)); % z score
+%                         thisavg = abs(thisavg) - mean(abs(thisavg(:)));
+                        pdata{s,c}.avg = thisavg;
                     end
                 end
                 
@@ -943,7 +972,11 @@ for st = 3%1:length(standardType)
                 A{s,1}.dimord = thisstat.dimord;
                 A{s,1}.label = thisstat.label;
                 A{s,1}.time = thisstat.time;
-                A{s,1}.avg = zscore(thisstat.stat);
+                
+                thisavg = thisstat.stat;
+                thisavg = (thisavg - mean(thisavg(:))) / std(thisavg(:)); % z score
+%                 thisavg = abs(thisavg) - mean(abs(thisavg(:))); % make absolute and mean-centre it
+                A{s,1}.avg = thisavg;
                 
                 % For response-locking, make all subjects have the same length
                 if strcmp(locking,'response')
