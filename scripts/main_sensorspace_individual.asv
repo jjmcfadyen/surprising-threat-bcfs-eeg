@@ -444,7 +444,7 @@ for s = 1:N
 
     cfg.correctm = 'cluster';
     cfg.clusteralpha = .05;
-    cfg.minnbchan = 2; % how many channels needed to form a cluster (minimum) - set to 0 to ignore this criterion
+    cfg.minnbchan = 0; % how many channels needed to form a cluster (minimum) - set to 0 to ignore this criterion
     cfg.numrandomization = 100;
 
     cfg.latency = [0 3];
@@ -528,9 +528,10 @@ for posneg = 1:2
     end
 end
 
+figure
 for j = 1:length(sigtime)
 
-    figure
+    subplot(1,length(sigtime),j)
 
     cfg = [];
     cfg.parameter = 'stat';
@@ -542,7 +543,6 @@ for j = 1:length(sigtime)
     cfg.highlightchannel = sigchan{j};
     cfg.highlightsymbol = '.';
     cfg.highlightcolor = [1 1 1];
-    cfg.highlightsize = 20;
 
     cfg.style = 'straight';
     cfg.markersymbol  = '.';
@@ -551,11 +551,8 @@ for j = 1:length(sigtime)
     cfg.comment = 'no';
 
     ft_topoplotER(cfg,stat);
-    colormap(colours(256,'viridis'))
+    colormap(colours(100,'viridis'))
     colorbar
-
-    title([num2str(cfg.xlim(1)) ' to ' num2str(cfg.xlim(end))])
-    caxis([-2.5 2.5])
 
 end
 
@@ -1012,10 +1009,9 @@ end
 stai = array2table(stai,'variablenames',{'full','state','trait'});
 
 % drift diffusion parameters
-ddm = readtable('D:\bCFS_EEG_Reanalysis\results\ddmparams_nozscore.csv'); 
+ddm = readtable('D:\bCFS_EEG_Reanalysis\results\ddmparams.csv'); 
 ddm.Subject(ddm.Experiment==2) = ddm.Subject(ddm.Experiment==2)-31; % 31 subjects in experiment 1
 ddm = ddm(ddm.Experiment==2,:);
-ddm = ddm(ismember(ddm.Subject,subjects),:);
 
 for st = 3%1:length(standardType)
     for b = 1%:length(baselineCorrect)
@@ -1052,8 +1048,10 @@ for st = 3%1:length(standardType)
                         pdata{s,c}.time = thisstat.time;
                         
                         thisavg = thisstat.stat;
-                        if i==6
-                            thisavg = thisavg - thisavg(:,1);
+
+                        if i==3
+                            thisavg = abs(thisavg);
+                            thisavg = thisavg - mean(thisavg); % mean centre
                         end
 
 %                         thisavg = zscore(thisavg')'; % z-score each channel across time
@@ -1093,7 +1091,7 @@ for st = 3%1:length(standardType)
                 
             end
             
-            % Get the t maps for this statistic
+            % Get the z-scored t maps for this statistic
             if i<9
                 A = cell(N,1);
             elseif i==9
@@ -1108,9 +1106,12 @@ for st = 3%1:length(standardType)
                     A{s,1}.time = thisstat.time;
 
                     thisavg = thisstat.stat;
-%                     if i==6
-%                         thisavg = thisavg - thisavg(:,1);
-%                     end
+
+                    if i==3
+                        thisavg = abs(thisavg);
+                        thisavg = thisavg - mean(thisavg);
+                    end
+
 %                     thisavg = zscore(thisavg')'; % z-score each channel across time
 %                     for chan = 1:size(thisavg,1)
 %                         thisavg(chan,:) = smooth(thisavg(chan,:),0.25*1024);
@@ -1168,13 +1169,13 @@ for st = 3%1:length(standardType)
             cfg.correctm = 'cluster';
             cfg.clusteralpha = .05;
             cfg.minnbchan = group_minclusternum;
-            cfg.numrandomization = 500;
+            cfg.numrandomization = 1000;
 
             if i==9
                 
-%                 ddmvals = [ddm.boundary_C1 ddm.boundary_C2 ddm.boundary_C3 ddm.boundary_C4];
-%                 ddmvals = [ddm.drift_C1 ddm.drift_C2 ddm.drift_C3 ddm.drift_C4];
-                ddmvals = [ddm.nondecision_C1 ddm.nondecision_C2 ddm.nondecision_C3 ddm.nondecision_C4];
+%                 ddmvals = [ddm.boundary_EN ddm.boundary_UN ddm.boundary_EF ddm.boundary_UF];
+%                 ddmvals = [ddm.drift_EN ddm.drift_UN ddm.drift_EF ddm.drift_UF];
+                ddmvals = [ddm.nondecision_EN ddm.nondecision_UN ddm.nondecision_EF ddm.nondecision_UF];
                 
                 x = cell(N,4); % eeg data
                 y = nan(N,4); % ddm parameters
@@ -1255,9 +1256,12 @@ for st = 3%1:length(standardType)
                 end
             end
                
+            figure
             for j = 1:length(sigtime)
                 
-                figure
+                if length(sigtime)>1
+                    subplot(1,length(sigtime),j)
+                end
                 
                 cfg = [];
                 cfg.parameter = 'stat';
@@ -1269,7 +1273,6 @@ for st = 3%1:length(standardType)
                 cfg.highlightchannel = sigchan{j};
                 cfg.highlightsymbol = '.';
                 cfg.highlightcolor = [1 1 1];
-                cfg.highlightsize = 20;
                 
                 cfg.style = 'straight';
                 cfg.markersymbol  = '.';
@@ -1280,37 +1283,8 @@ for st = 3%1:length(standardType)
                 ft_topoplotER(cfg,stat{i});
                 colormap(colours(256,'viridis'))
                 colorbar
-                title([num2str(cfg.xlim(1)) ' to ' num2str(cfg.xlim(end))])
                 
             end
-
-            % plot t maps
-            pdata = [];
-            for s = 1:length(A)
-                pdata(s,:,:) = A{s}.avg;
-            end
-
-            for j = 1:length(sigtime)
-                
-                figure
-
-                y = squeeze(mean(pdata(:,ismember(A{1}.label,sigchan{j}),:),2)); % average over electrodes
-                m = mean(y);
-                sem = std(y)/sqrt(size(y,1));
-                upper = m+sem;
-                lower = m-sem;
-                x = A{1}.time;
-                sigx = x(ismember(A{1}.time,sigtime{j}));
-
-                patch([x fliplr(x)],[upper fliplr(lower)],'k','facealpha',.2); hold on
-                plot(x,m,'k','linewidth',1.4); hold on
-                plot(x([1 end]),[0 0],'k:','linewidth',1.2); hold on
-                set(gca,'ticklength',[0 0])
-                ax = gca;
-                scatter(sigx,repmat(ax.YLim(1),length(sigx),1),'markerfacecolor','k','markeredgecolor','none'); hold on
-
-            end
-
         end
     end
 end

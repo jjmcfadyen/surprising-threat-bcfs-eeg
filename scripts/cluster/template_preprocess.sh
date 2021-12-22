@@ -1,36 +1,19 @@
-#!/bin/bash -l
+#!/bin/sh
 
-# Batch script to run a multi-threaded MATLAB job under SGE.
+# Name for this job
+#$ -N [FILENAME]
 
-# Request X minutes of wallclock time (format hours:minutes:seconds).  --> FILLED IN BY MATLAB SCRIPT
-#$ -l h_rt=[TIME]
+#$ -S /bin/sh
 
-# Request 10 gigabyte of TMPDIR space
-#$ -l tmpfs=10G
+# The output from each job - the stuff you would normally see on your screen -
+# is written to files. Normally one for error messages, and one for normal output.
+# The line below joins the two so everything goes to one file.
+#$ -j y
 
-# Request X gigabytes of RAM per core. --> FILLED IN BY MATLAB SCRIPT
-#$ -l mem=[RAM]
+#$ -l vf=[RAM]
+#$ -l h_vmem=[RAM]
 
-# Request a number of threads (which will use that number of cores).
-# On Myriad you can set the number of threads to a maximum of 36.
-#$ -pe smp 4
+#$ -t [JOBIDX]
 
-# Request one MATLAB licence - makes sure your job doesn't start
-# running until sufficient licenses are free.
-#$ -l matlab=1
+time /share/apps/matlab -nosplash -nodesktop -nodisplay -singleCompThread -r "cd('/data/holly-host/jmcfadyen/bCFS_EEG/scripts'); preprocess_eeg($SGE_TASK_ID,[STAGES],[SUBJECTS])"
 
-# Set the name of the job.  --> FILLED IN BY MATLAB SCRIPT
-#$ -N [SUBJECT]
-
-# Set the working directory to somewhere in your scratch space.
-# This is a necessary step as compute nodes cannot write to $HOME.
-# Replace "<your_UCL_id>" with your UCL user ID.
-# This directory must already exist.   --> FILLED IN BY MATLAB SCRIPT
-#$ -wd /home/skgtjm6/Scratch/
-
-# Set up directories & modules
-module load xorg-utils/X11R7.7
-module load matlab/full/r2018b/9.5
-
-# These echoes output what you are about to run  --> FILLED IN BY MATLAB SCRIPT
-/usr/bin/time --verbose matlab -nosplash -nodesktop -nodisplay -r "cd('/home/skgtjm6/Scratch/2021_bCFSEEG/scripts'); preprocess_eeg('[SUBJECT]')"

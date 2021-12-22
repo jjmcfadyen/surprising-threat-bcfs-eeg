@@ -8,85 +8,13 @@ library(viridis)
 library(extrafont)
 
 # ------------------------------------------------------------------------------
-
-experiment <- 3 # 1 or 2, or 3 to combine both
-st <- "last" # "all", "first", or "last"
-
-# ------------------------------------------------------------------------------
 ############
 # Get data #
 ############
 # ------------------------------------------------------------------------------
 
 # Read in data
-if (experiment==3){
-  
-  d1 <- read.csv("D:/bCFS_EEG_Reanalysis/data/exp1_behavioural.csv")
-  d1$Experiment <- rep(1,nrow(d1))
-  
-  d2 <- read.csv("D:/bCFS_EEG_Reanalysis/data/exp2_behavioural.csv")
-  d2$Subject <- d2$Subject + max(d1$Subject)
-  d2$Experiment <- rep(2,nrow(d2))
-  
-  d <- rbind(d1,d2)
-  d$Experiment <- as.factor(d$Experiment)
-  
-} else {
-  d <- read.csv(paste("D:/bCFS_EEG_Reanalysis/data/exp",experiment,"_behavioural.csv",sep=""))
-  d$Experiment <- rep(experiment,nrow(d))
-}
-
-# Ignore subject who had too many missed trials
-rmsub <- c()
-for (e in unique(d$Experiment)) {
-  
-  thisd <- d %>% 
-    filter(Experiment==e) %>% 
-    group_by(Subject) %>% 
-    summarise(n = n(),
-              missed = sum(is.na(RT)),
-              proportion = round(missed/n,2)) %>% 
-    as.data.frame()
-  
-  z <- as.vector(abs(scale(thisd$proportion)))
-  
-  if (!all(is.na(z))){
-    rmsub <- c(rmsub,as.vector(thisd$Subject[z>4]))
-  }
-}
-
-d <- filter(d,Subject!=rmsub)
-
-# ------------------------------------------------------------------------------
-
-# Add info
-d$Response[d$Response=="NaN"] = NA
-d$Response <- as.factor(d$Response)
-
-d$StartBlock <- rep(NA,nrow(d))
-for (subject in unique(d$Subject)){
-  tmp <- filter(d,Subject==subject)
-  d$StartBlock[d$Subject==subject] = rep(tmp$Emotion[1],nrow(tmp))
-}
-
-d$BlockType <- rep(NA,nrow(d))
-d$BlockType[d$Condition==1 | d$Condition==4] = "neutral"
-d$BlockType[d$Condition==2 | d$Condition==3] = "fearful"
-
-# ------------------------------------------------------------------------------
-
-# Select data
-if (st!="all") {
-  d <- d %>% filter(Type==st | Type=="deviant")
-}
-
-d <- d %>% filter(Acc==1,Outlier==0,RT>.5)
-
-if (experiment==2){
-  d <- d %>% filter(Subject!=3)
-} else if (experiment==3) {
-  d <- d %>% filter(Subject!=(3+max(d1$Subject)),StateAnxiety!="NaN")
-}
+d <- read.csv("D:\bCFS_EEG_Reanalysis\results\erponsets_alltrials.csv")
 
 # Convert to factors
 d$Subject <- as.factor(d$Subject)
@@ -120,7 +48,7 @@ for (s in unique(d$Subject)){
 # Run Models #
 ##############
 # ------------------------------------------------------------------------------
- 
+
 if (experiment < 3) {
   
   m0 <- lmer(RT ~ (1|Subject),d,REML=F)
@@ -175,7 +103,7 @@ T <- data.frame(Col1 = rownames(S),
                 p_lower = round(S$`Pr(>|t|)`,3))
 
 if (experiment < 3) {
-
+  
   e <- emmeans(m,pairwise~Emotion*Expectation)
   e <- as.data.frame(e$emmeans)
   T <- rbind(T,data.frame(Col1 = paste(e$Expectation,e$Emotion),
@@ -257,7 +185,7 @@ if (experiment < 3) {
       axis.title.y = element_text(margin=margin(r=20)),
       axis.ticks.length = unit(7, "points"),
       legend.position="none"
-      ) + 
+    ) + 
     scale_color_manual(values=cmap) + 
     ylab("Estimated Marginal Mean\nResponse Time (seconds)") + xlab("Condition") + 
     scale_x_discrete(labels=c("1"="Expected\nNeutral",
@@ -330,7 +258,7 @@ if (experiment < 3) {
     ) + 
     coord_cartesian(xlim=c(-20,25),ylim=c(0,0.12)) + 
     scale_x_continuous(breaks=seq(-20,25,5)) + scale_y_continuous(breaks=seq(0,0.12,0.02))
-    
+  
   ggsave("anxiety_histogram.svg",g,width=150,height=122,units="mm",dpi=300)
   
   # EMMEANS
@@ -458,7 +386,7 @@ for (subject in unique(d$Subject)){
   if (any(thissum$acc==0) | any(thissum$acc==1)){
     print(paste("Skipping subject ",subject,sep=""))
   } else {
-  
+    
     for (condition in 1:4){
       
       thisd <- filter(d,Subject==subject)
@@ -518,7 +446,7 @@ Tsum <- T %>%
     Boundary=mean(Boundary,na.rm=TRUE),
     sNondecision=sd(Nondecision,na.rm=TRUE)/sqrt(n),
     Nondecision=mean(Nondecision,na.rm=TRUE)
-            )
+  )
 
 ggplot() + 
   geom_point(data=T,aes(x=Condition,y=Drift)) + 
@@ -538,7 +466,7 @@ ggplot() +
 ggplot() + 
   geom_point(data=T,aes(x=Condition,y=RT)) + 
   geom_point(data=Tsum,aes(x=Condition,y=RT),size=6) 
-  
+
 
 csvtable <- data.frame()
 for (condition in 1:4) {

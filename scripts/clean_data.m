@@ -1,8 +1,13 @@
 function [SL,RL,T,idx] = clean_data(filename)
+% [SL,RL,T,idx] = clean_data(filename)
 % Takes the preprocessed data, interpolates bad channels, and sorts into stimulus-locked and response-locked time series
 
 addpath('D:\Toolboxes\fieldtrip-20191119')
 ft_defaults
+
+smoothing = 0.25; % smoothing window for moving average (in seconds)
+
+%% Run
 
 cfg = [];
 cfg.method = 'template';
@@ -22,6 +27,13 @@ end
 
 % Check for bad channels & interpolate
 [badchannels,SL] = fix_badchannels(D,neighbours);
+
+% Smooth data
+for trl = 1:length(SL.trial)
+    for chan = 1:length(SL.label)
+        SL.trial{trl}(chan,:) = movmean(SL.trial{trl}(chan,:),smoothing*SL.fsample);
+    end
+end
 
 % Shift time axis for response-locked data
 offset = nan(length(SL.trial),1);

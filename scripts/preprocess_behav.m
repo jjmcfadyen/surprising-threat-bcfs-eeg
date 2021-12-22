@@ -4,7 +4,7 @@ function output = preprocess_behav(expnum,makeplots)
 
 % Directories
 dir_home = 'D:\bCFS_EEG_Reanalysis\';
-addpath(fullfile(dir_home,'scripts'));
+addpath(fullfile(dir_home,'github','scripts'));
 addpath(genpath(fullfile(dir_home,'scripts')));
 
 dir_data = fullfile(dir_home,'data',['Exp' num2str(expnum)],'behav');
@@ -248,14 +248,8 @@ output.trialcount = trialcount;
 
 output.demographics = demographics;
 
-if expnum==1 % last subject is missing the STAI info
-    output.demographics.STAI = [stai.full; NaN];
-    output.demographics.State = [stai.state; NaN];
-    output.demographics.Trait = [stai.trait; NaN];
-else
-    output.demographics.STAI = stai.full;
-    output.demographics.State = stai.state;
-    output.demographics.Trait = stai.trait;
-end
+output.demographics.STAI = stai.full;
+output.demographics.State = stai.state;
+output.demographics.Trait = stai.trait;
 
 end
