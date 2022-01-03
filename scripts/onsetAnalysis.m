@@ -1,22 +1,56 @@
-% Rate of change
+% Analyse the onset times
+clear all
+clc
 
-onsetsamplemin = 2; % minimum sample time for an "onset" event
-onsetsamplegap = 10; % time needed between onset events (in samples)
+%% Directories
+
+addpath('D:\Toolboxes\fieldtrip-master')
+ft_defaults;
+
+dir_data = 'D:\bCFS_EEG_Reanalysis\data\Exp2\eeg\preprocessed\unfiltered';
+
+%% Parameters
+
 driftwindow = [0.5 0.1];
+nIterations = 0; % if 0, then don't do randomisation of response times
+
+subjects = [1:2 4:22 24:33]; % 1:33;
+N = length(subjects);
+
+cmap = [77, 242, 255;
+        98, 174, 255;
+        255, 180, 29;
+        255, 68, 142]/255;
+
+cfg = [];
+cfg.method = 'template';
+cfg.layout = 'biosemi64.lay';
+neighbours = ft_prepare_neighbours(cfg);
+
+standardType        = {'all','first', 'last'};
+baselineCorrect     = [true, false];
+st = 3; % last standards
+b = 1;  % baseline corrected epochs
+datatype = 'orig';
+
+%% Estimate onsets for each trial
 
 Y = [];
 ROC = [];
-onsets = [];
-rlonsets = [];
-trialdrifts = [];
-alltrialonsets = cell(N,4);
-allrltrialonsets = cell(N,4);
-alltrialdrifts = cell(N,4);
 rts = nan(N,4);
-missingdata = nan(N,64);
+missingdata = nan(N,64,2,nIterations+1);
+onsets = nan(N,4,64,2);
+rlonsets = onsets;
+nullonsets = onsets;
+nullrlonsets = onsets;
+alltrialonsets = cell(N,4,nIterations+1);
+allrltrialonsets = alltrialonsets;
+rtcorr = nan(N,64,2,nIterations+1);
+rlrtcorr = nan(N,64,2,nIterations+1);
 onsetdata = [];
 rlonsetdata = [];
-rtonsetdata = [];
+trialdrifts = nan(N,4,64);
+alltrialdrifts = cell(N,4);
 for s = 1:N
 
     subject = subjects(s);
@@ -43,7 +77,6 @@ for s = 1:N
     X = SL.time{1};
     xidx = X<=3;
 
-    roc = [];
     d = [];
     for trl = 1:nTrls
         if trl==1
@@ -53,274 +86,111 @@ for s = 1:N
             tmp = SL.trial{fidx(trl)}(chan,xidx);
             tmp = movmean(tmp,10); % smooth
             d(trl,chan,:) = tmp;
-            roc(trl,chan,2:end) = diff(tmp);
         end
     end
 
     % See when each trial & each channel exceeds a certain threshold
-    trlonsets = nan(nTrls,nChan);
-    rltrlonsets = nan(nTrls,nChan);
-    parfor trl = 1:nTrls
-        thisrt = T.RT(fidx(trl));
-        thisx = X(xidx);
-        thisxidx = thisx>0 & thisx<3; % thisxidx = thisx>0 & thisx<(thisrt-driftwindow(1));
-        thisx = thisx(thisxidx);
-        disp(['Trial ' num2str(trl)])
+    [trlonsets,rltrlonsets] = estimateOnsets(d,X(xidx),T.RT(idx),T.Condition(idx),nIterations);
+
+    orig = [];
+    orig.trlonsets = squeeze(trlonsets(:,:,:,1));
+    orig.rltrlonsets = squeeze(rltrlonsets(:,:,:,1));
+
+    % correlate each iteration with RT
+    for i = 1:nIterations+1
         for chan = 1:nChan
+            for j = 1:2
 
-%             thisdata = squeeze(d(trl,chan,:));
-%             thisdata = abs(zscore(thisdata(thisxidx)));
-% 
-%             thisroc = squeeze(roc(trl,chan,:));
-%             thisroc = movmean(thisroc,SL.fsample*0.05); % smooth with 50 ms moving average (only if ROC)
-%             thisroc = abs(zscore(thisroc(thisxidx)));
-
-%             thisonset = find(cumsum(thisdata>1.28)>=onsetsamplemin,1,'first');
-            
-%             if ~isempty(thisonset)
-%                 trlonsets(trl,chan) = thisx(thisonset-onsetsamplemin+1);
-%             end
-
-            thisonset = [];
-            thisresid = [];
-            tp = thisx(findMin(0,thisx)+1);
-            tplist = [tp];
-            while round(tp,3) <= thisx(end)
-                thisdata = squeeze(d(trl,chan,thisx<=tp));
-                [o,r] = findchangepts(thisdata,'statistic','mean');
-                if isempty(o)
-                    o = NaN;
-                    r = NaN;
+                thisx = T.RT(idx);
+                thisy = squeeze(trlonsets(:,chan,j,i));
+                nanidx = isnan(thisy);
+                thisx = thisx(~nanidx);
+                thisy = thisy(~nanidx);
+                if isempty(thisy)
+                    rtcorr(s,chan,j,i) = NaN;
+                else
+                    rtcorr(s,chan,j,i) = corr(thisx,thisy);
                 end
-                thisonset = [thisonset o];
-                thisresid = [thisresid r];
-                try
-                    tp = thisx(findMin(tp,thisx)+10);
-                    tplist = [tplist tp];
-                catch
-                    tp = Inf;
-                end
-            end
-            
-%             thisonset = mode(thisonset(tplist<(thisrt-driftwindow(1)))); % find the most common onset point prior to response time (plus motor preparation window)
-            thisonset = mode(thisonset(tplist<thisrt));
-%             thisonset = findchangepts(squeeze(d(trl,chan,thisx>0 & thisx<thisrt)),'statistic','mean'); % find most "significant" change point in window from zero to response onset
 
-            if ~isempty(thisonset)
-                trlonsets(trl,chan) = thisx(thisonset(1));
-                rltrlonsets(trl,chan) = -(thisrt - thisx(thisonset));
+                thisx = T.RT(idx);
+                thisy = squeeze(rltrlonsets(:,chan,j,i));
+                nanidx = isnan(thisy);
+                thisx = thisx(~nanidx);
+                thisy = thisy(~nanidx);
+                if isempty(thisy)
+                    rlrtcorr(s,chan,j,i) = NaN;
+                else
+                    rlrtcorr(s,chan,j,i) = corr(thisx,thisy);
+                end
             end
         end
     end
-    disp([':::::::::::: ' num2str(round(mean(mean(isnan(trlonsets)))*100,2)) '% of trials with no identifiable onset time'])
-    disp([':::::::::::: Mean onset time = ' num2str(round(nanmean(trlonsets(:)),3)) ' seconds'])
-    disp([':::::::::::: Mean onset time = ' num2str(round(nanmean(rltrlonsets(:)),3)) ' seconds response locked)'])
-    disp([':::::::::::: Mean no. of onsets after response = ' num2str(nanmean(rltrlonsets(:)>=0))])
 
-    missingdata(s,:) = mean(isnan(trlonsets));
-
+    % log
+    missingdata(s,:,:,i) = mean(isnan(trlonsets(:,:,:,1)));
     for c = 1:4
-        onsets(s,c,:) = nanmean(trlonsets(T.Condition(idx)==c,:));
-        rlonsets(s,c,:) = nanmean(rltrlonsets(T.Condition(idx)==c,:));
-        alltrialonsets{s,c} = trlonsets(T.Condition(idx)==c,:);
-        allrltrialonsets{s,c} = rltrlonsets(T.Condition(idx)==c,:);
+        onsets(s,c,:,:) = nanmean(trlonsets(T.Condition(idx)==c,:,:,1));
+        rlonsets(s,c,:,:) = nanmean(rltrlonsets(T.Condition(idx)==c,:,:,1));
+        if nIterations>0
+            nullonsets(s,c,:,:) = nanmean(nanmean(trlonsets(T.Condition(idx)==c,:,:,2:end),4));
+            nullrlonsets(s,c,:,:) = nanmean(nanmean(rltrlonsets(T.Condition(idx)==c,:,:,2:end),4));
+        end
+        for i = 1:nIterations+1
+            alltrialonsets{s,c,i} = squeeze(trlonsets(T.Condition(idx)==c,:,:,i));
+            allrltrialonsets{s,c,i} = squeeze(rltrlonsets(T.Condition(idx)==c,:,:,i));
+        end
     end
 
     % Gather data to plot, organised by onset time
     thisx = X(xidx);
-    for chan = 1:nChan
-        q = quantile(trlonsets(:,chan),4);
-        for i = 1:3
-
-            % get index of trials with this onset time (fast, medium, or slow)
-            qidx = trlonsets(:,chan)>q(i) & trlonsets(:,chan)<q(i+1);
-            fqidx = find(qidx);
-
-            % select stimulus-locked data for this onset group and average it
-            onsetdata(s,i,chan,:) = squeeze(mean(d(qidx,chan,:)));
-
-            % log average onset times for this channel/quantile
-            rtonsetdata(s,i,chan,1) = mean(trlonsets(qidx,chan));
-
+    for j = 1:2 % first onset, last onset
+        for chan = 1:nChan
+            q = quantile(orig.trlonsets(:,chan,j),4);
+            for i = 1:3
+    
+                % get index of trials with this onset time (fast, medium, or slow)
+                qidx = orig.trlonsets(:,chan,j)>q(i) & orig.trlonsets(:,chan,j)<q(i+1);
+                fqidx = find(qidx);
+    
+                % select stimulus-locked data for this onset group and average it
+                onsetdata(s,i,chan,:,j) = squeeze(mean(d(qidx,chan,:)));
+    
+                % log average onset times for this channel/quantile
+                rtonsetdata(s,i,chan,1,j) = mean(orig.trlonsets(qidx,chan,j));
+    
+            end
         end
     end
 
     % Gather response-locked data to plot, organised by onset time
     thisx = X(xidx);
     theserts = T.RT(idx);
-    for chan = 1:nChan
-        q = fliplr(quantile(rltrlonsets(:,chan),4)); % fastest to slowest
-        for i = 1:3
-
-            % get index of trials with this onset time (fast, medium, or slow)
-            qidx = rltrlonsets(:,chan)<q(i) & rltrlonsets(:,chan)>q(i+1);
-            fqidx = find(qidx);
-
-            % select response-locked data
-            tmp = nan(sum(qidx),size(d,3));
-            for j = 1:length(fqidx)
-                thisrt = theserts(fqidx(j));
-                thisrltrial = squeeze(d(fqidx(j),chan,thisx<=(thisrt+0.1))); % get the data from first time point to response (plus 100 ms after)
-                tmp(j,size(tmp,2)-length(thisrltrial)+1:end) = thisrltrial; % insert into 'tmp' matrix, with leading NaNs
+    for otype = 1:2 % first onset, last onset
+        for chan = 1:nChan
+            q = fliplr(quantile(orig.rltrlonsets(:,chan,otype),4)); % fastest to slowest
+            for i = 1:3
+    
+                % get index of trials with this onset time (fast, medium, or slow)
+                qidx = orig.rltrlonsets(:,chan,otype)<q(i) & orig.rltrlonsets(:,chan,otype)>q(i+1);
+                fqidx = find(qidx);
+    
+                % select response-locked data
+                tmp = nan(sum(qidx),size(d,3));
+                for j = 1:length(fqidx)
+                    thisrt = theserts(fqidx(j));
+                    thisrltrial = squeeze(d(fqidx(j),chan,thisx<=(thisrt+0.1))); % get the data from first time point to response (plus 100 ms after)
+                    tmp(j,size(tmp,2)-length(thisrltrial)+1:end) = thisrltrial; % insert into 'tmp' matrix, with leading NaNs
+                end
+                thisrlmean = nan(1,size(tmp,2));
+                thisrlmean(:,mean(isnan(tmp))<0.05) = nanmean(tmp(:,mean(isnan(tmp))<0.05)); % save mean for time points where there is at least 95% of the data
+                rlonsetdata(s,i,chan,:,otype) = thisrlmean;
+    
+                % log average onset times for this channel/quantile
+                rtonsetdata(s,i,chan,2,otype) = mean(orig.rltrlonsets(qidx,chan,otype));
+    
             end
-            thisrlmean = nan(1,size(tmp,2));
-            thisrlmean(:,mean(isnan(tmp))<0.05) = nanmean(tmp(:,mean(isnan(tmp))<0.05)); % save mean for time points where there is at least 95% of the data
-            rlonsetdata(s,i,chan,:) = thisrlmean;
-
-            % log average onset times for this channel/quantile
-            rtonsetdata(s,i,chan,2) = mean(rltrlonsets(qidx,chan));
-
         end
     end
-
-%     avcon = [];
-%     for c = 1:4
-%         avcon(c,:,:) = mean(d(T.Condition(idx)==c,:,:));
-%     end
-% 
-%     thisx = X(xidx);
-%     for c = 1:4
-%         for chan = 1:nChan
-% 
-%             thisonset = [];
-%             thisresid = [];
-%             tp = thisx(findMin(0.5,thisx));
-%             while tp < 3
-%                 thisdata = squeeze(avcon(c,chan,thisx>0 & thisx<=tp));
-%                 [o,r] = findchangepts(thisdata);
-%                 thisonset = [thisonset o];
-%                 thisresid = [thisresid r];
-%                 tp = thisx(findMin(tp,thisx)+1);
-%             end
-%             
-%             ri = findchangepts(thisresid);
-%             thisonset = thisonset(ri);
-% 
-%             onsets(s,c,chan) = thisx(thisonset + findMin(0,thisx));
-%         end
-%     end
-
-%     % See when all channels differ significantly from baseline
-%     tmpx = X(xidx);
-%     trlonsets = nan(1,nTrls);
-%     for trl = 1:nTrls
-%         thisbaseline = squeeze(nanmean(abs(roc(trl,:,tmpx<=0)),3));
-%         tp = find(tmpx==0);
-%         pvals = [];
-%         while true
-%             tp = tp+1;
-%             if tp>=size(roc,3)
-%                 break
-%             end
-%             [~,p] = ttest(abs(squeeze(roc(trl,:,tp))),thisbaseline,'tail','right');
-%             pvals = [pvals p];
-%             if length(pvals)>=onsetsamplemin
-%                 if all(pvals(end-onsetsamplemin+1:end) < .05)
-%                     trlonsets(trl) = tmpx(tp-onsetsamplemin);
-%                     break
-%                 end
-%             end
-%             if isnan(trlonsets(trl))
-%                 trlonsets(trl) = tmpx(find(pvals==min(pvals),1,'first'));
-%             end
-%         end
-%     end
-% 
-%     for c = 1:4
-%         onsets(s,c) = nanmean(trlonsets(T.Condition(idx)==c));
-%         alltrialonsets{s,c} = trlonsets(T.Condition(idx)==c);
-%     end
-
-%     % Do stats against zero OR baseline
-%     nTime = size(d,3);
-%     thisx = X(xidx);
-%     thisx = thisx(thisx>0);
-%     for i = 1:2
-% 
-%         theseonsets = nan(nChan,4,2);
-%         for chan = 1:nChan
-% 
-%             if i==1
-%                 thisnull = zeros(size(d,1),2);
-%             elseif i==2
-%                 thisnull = [squeeze(mean(d(:,chan,X<=0),3)) squeeze(nanmean(roc(:,chan,X<=0),3))];
-%             end
-% 
-%             % Get pvalue of each condition compared to a null (zeros or baseline period), at each time point
-%             pvals = nan(4,nTime,2); % condition, time point, data or rate of change
-%             for c = 1:4
-% 
-%                 % get average waveform for this condition & this channel
-%                 cidx = T.Condition(idx)==c;
-%                 thisy = squeeze(d(cidx,chan,:));
-%                 thisy(:,:,2) = squeeze(roc(cidx,chan,:));
-% 
-%                 % reapply baseline correction on the actual data (not the rate of change)
-%                 thisy(:,:,1) = thisy(:,:,1) - mean(thisy(:,X(xidx)>= -0.05 & X(xidx)<=0,1),2);
-% 
-%                 for t = 1:nTime
-%                     thisy = [squeeze(d(cidx,chan,t)) squeeze(roc(cidx,chan,t))];
-%                     [~,pvals(c,t,1)] = ttest(thisy(:,1),thisnull(cidx,1));
-%                     if t>1
-%                         [~,pvals(c,t,2)] = ttest(thisy(:,2),thisnull(cidx,2));
-%                     end
-%                 end
-%             end
-%             pvals = pvals(:,X(xidx)>0,:); % don't look at pvalues in baseline
-% 
-%             % if the channel isn't dead (all zeros/nans)
-%             if ~all(isnan(pvals(:)))
-% 
-%                 % Correct for multiple comparisons (FDR) across all timepoints (per channel/dataset)
-%                 P = squeeze(pvals(:,:,1));
-%                 Pd = reshape(mafdr(P(:)),size(P,1),size(P,2)) < .05;
-% 
-%                 P = squeeze(pvals(:,:,2)); 
-%                 Pr = reshape(mafdr(P(:)),size(P,1),size(P,2)) < .05;
-% 
-%                 % See if there is a significant onset for each condition 
-%                 % --- data against null
-%                 if all(any(Pd,2))
-% 
-%                     % Move through time window and find onsets of significant clusters (minimum = onsetsamplemin)
-%                     pcount = double(Pd);
-%                     for t = 2:size(Pd,2)
-%                         pcount(:,t) = pcount(:,t-1) + Pd(:,t);
-%                         pcount(Pd(:,t)==0,t) = 0;
-%                     end
-% 
-%                     for c = 1:4
-%                         o = find(pcount(c,:)>=onsetsamplemin,1,'first');
-%                         if ~isempty(o)
-%                             theseonsets(chan,c,1) = thisx(o);
-%                         end
-%                     end
-%                 end
-%                 if all(any(Pr,2))
-%                     
-%                     % Move through time window and find onsets of significant clusters (minimum = onsetsamplemin)
-%                     pcount = double(Pr);
-%                     for t = 2:size(Pr,2)
-%                         pcount(:,t) = pcount(:,t-1) + Pr(:,t);
-%                         pcount(Pr(:,t)==0,t) = 0;
-%                     end
-% 
-%                     for c = 1:4
-%                         o = find(pcount(c,:)>=onsetsamplemin,1,'first');
-%                         if ~isempty(o)
-%                             theseonsets(chan,c,2) = thisx(o);
-%                         end
-%                     end
-% 
-%                 end
-%             end
-%         end
-%         if i==1
-%             onsets(s,:,:,:) = theseonsets;
-%         elseif i==2
-%             onsets_baseline(s,:,:,:) = theseonsets;
-%         end
-%     end
 
     % Get drift rate per trial using predefined window
     v = nan(nTrls,nChan);
@@ -352,8 +222,8 @@ end
 labels = SL.label;
 x = X(xidx);
 
-save('erponsets.mat',...
-    'onsets','rlonsets','alltrialonsets','allrltrialonsets','rts','missingdata','onsetdata','rlonsetdata','rtonsetdata','onsetsamplemin','onsetsamplegap','driftwindow','labels','x');
+% save('erponsets.mat',...
+%     'onsets','rlonsets','alltrialonsets','allrltrialonsets','rts','missingdata','onsetdata','rlonsetdata','rtonsetdata','onsetsamplemin','onsetsamplegap','driftwindow','labels','x');
 
 %% Plot
 
@@ -394,33 +264,39 @@ cmap = [243, 140, 255 ;
 % end
 % sgtitle('SL onset times (fast, medium, slow)')
 
-figure
-for chan = 1:length(chanselection) % specific channel groupings
-
-    subplot(1,length(chanselection),chan)
-
-    for i = 1:3
-
-        y = squeeze(mean(onsetdata(:,i,ismember(labels,chanselection{chan}),:),3));
-        m = mean(y);
-        sem = std(y)/sqrt(size(y,1));
-        upper = m+sem;
-        lower = m-sem;
-
-        patch([x fliplr(x)],[upper fliplr(lower)],cmap(i,:),'facealpha',.2,'edgealpha',0); hold on
-        plot(x,m,'color',cmap(i,:),'linewidth',1.3); hold on
-    end
+for j = 1:2
+    figure
+    for chan = 1:length(chanselection) % specific channel groupings
     
-    ax = gca;
-    for i = 1:3
-        plot(repmat(mean(rtonsetdata(:,i,chan,1)),2,1),ax.YLim,'color',cmap(i,:),'linewidth',1.2,'linestyle','--'); hold on
+        subplot(1,length(chanselection),chan)
+    
+        for i = 1:3
+    
+            y = squeeze(mean(onsetdata(:,i,ismember(labels,chanselection{chan}),:,j),3));
+            m = mean(y);
+            sem = std(y)/sqrt(size(y,1));
+            upper = m+sem;
+            lower = m-sem;
+    
+            patch([x fliplr(x)],[upper fliplr(lower)],cmap(i,:),'facealpha',.2,'edgealpha',0); hold on
+            plot(x,m,'color',cmap(i,:),'linewidth',1.3); hold on
+        end
+        
+        ax = gca;
+        for i = 1:3
+            plot(repmat(mean(rtonsetdata(:,i,chan,1,j)),2,1),ax.YLim,'color',cmap(i,:),'linewidth',1.2,'linestyle','--'); hold on
+        end
+        plot(x([1 end]),[0 0],'k:'); hold on
+        title(strjoin(chanselection{chan}))
+        xlim(x([1 end]))
+    
     end
-    plot(x([1 end]),[0 0],'k:'); hold on
-    title(strjoin(chanselection{chan}))
-    xlim(x([1 end]))
-
+    if j==1
+        sgtitle('SL early onset times (fast, medium, slow)')
+    elseif j==2
+        sgtitle('SL late onset times (fast, medium, slow)')
+    end
 end
-sgtitle('SL onset times (fast, medium, slow)')
 
 % -- response-locked
 thisx = x - 2.9;
@@ -456,37 +332,44 @@ thisx = x - 2.9;
 % end
 % sgtitle('RL onset times (fast, medium, slow)')
 
-figure
-for chan = 1:length(chanselection) % specific channel groupings
-
-    subplot(1,length(chanselection),chan)
-
-    for i = 1:3
-
-        y = squeeze(nanmean(rlonsetdata(:,i,ismember(labels,chanselection{chan}),:),3));
-        m = nanmean(y);
-        sem = nanstd(y)/sqrt(size(y,1));
-        upper = m+sem;
-        lower = m-sem;
-
-        nanidx = isnan(upper) | isnan(lower);
-        patch([thisx(~nanidx) fliplr(thisx(~nanidx))],[upper(~nanidx) fliplr(lower(~nanidx))],cmap(i,:),'facealpha',.2,'edgealpha',0); hold on
-        plot(thisx,m,'color',cmap(i,:),'linewidth',1.3); hold on
+for j = 1:2
+    figure
+    for chan = 1:length(chanselection) % specific channel groupings
+    
+        subplot(1,length(chanselection),chan)
+    
+        for i = 1:3
+    
+            y = squeeze(nanmean(rlonsetdata(:,i,ismember(labels,chanselection{chan}),:,j),3));
+            m = nanmean(y);
+            sem = nanstd(y)/sqrt(size(y,1));
+            upper = m+sem;
+            lower = m-sem;
+    
+            nanidx = isnan(upper) | isnan(lower);
+            patch([thisx(~nanidx) fliplr(thisx(~nanidx))],[upper(~nanidx) fliplr(lower(~nanidx))],cmap(i,:),'facealpha',.2,'edgealpha',0); hold on
+            plot(thisx,m,'color',cmap(i,:),'linewidth',1.3); hold on
+        end
+        
+        ax = gca;
+        for i = 1:3
+            plot(repmat(nanmean(rtonsetdata(:,i,chan,2,j)),2,1),ax.YLim,'color',cmap(i,:),'linewidth',1.2,'linestyle','--'); hold on
+        end
+        tmpx = ~isnan(squeeze(nanmean(nanmean(rlonsetdata(:,:,chan,:,j)),2)));
+        tmpx = thisx([find(tmpx,1,'first') find(tmpx,1,'last')]);
+        plot(tmpx,[0 0],'k:'); hold on
+        plot([0 0],ax.YLim,'k:'); hold on
+        title(strjoin(chanselection{chan}))
+%         xlim([-1.5 0.1])
+    
     end
     
-    ax = gca;
-    for i = 1:3
-        plot(repmat(nanmean(rtonsetdata(:,i,chan,2)),2,1),ax.YLim,'color',cmap(i,:),'linewidth',1.2,'linestyle','--'); hold on
+    if j==1
+        sgtitle('RL early onset times (fast, medium, slow)')
+    elseif j==2
+        sgtitle('RL late onset times (fast, medium, slow)')
     end
-    tmpx = ~isnan(squeeze(nanmean(nanmean(rlonsetdata(:,:,chan,:)),2)));
-    tmpx = thisx([find(tmpx,1,'first') find(tmpx,1,'last')]);
-    plot(tmpx,[0 0],'k:'); hold on
-    plot([0 0],ax.YLim,'k:'); hold on
-    title(strjoin(chanselection{chan}))
-    xlim([-1.5 0.1])
-
 end
-sgtitle('RL onset times (fast, medium, slow)')
 
 % % Data itself
 % 
@@ -586,9 +469,9 @@ for s = 1:N
         end
 
         for chan = 1:length(chanselection)
-            thistable.([changroupnames{1} 'onsetSL']) = mean(alltrialonsets{s,c}(:,ismember(labels,chanselection{chan})),2);
-            thistable.([changroupnames{1} 'onsetRL']) = mean(allrltrialonsets{s,c}(:,ismember(labels,chanselection{chan})),2);
-            thistable.([changroupnames{1} 'drift']) = mean(alltrialdrifts{s,c}(:,ismember(labels,chanselection{chan})),2);
+            thistable.([changroupnames{chan} 'onsetSL']) = mean(alltrialonsets{s,c}(:,ismember(labels,chanselection{chan})),2);
+            thistable.([changroupnames{chan} 'onsetRL']) = mean(allrltrialonsets{s,c}(:,ismember(labels,chanselection{chan})),2);
+            thistable.([changroupnames{chan} 'drift']) = mean(alltrialdrifts{s,c}(:,ismember(labels,chanselection{chan})),2);
         end
 
         thistable.RT = T.RT(idx & T.Condition==c);
@@ -602,13 +485,12 @@ for s = 1:N
             thistable.drift = repmat(table2array(ddm(ismember(ddm.Subject,subjects(s)),ismember(ddm.Properties.VariableNames,['drift_C' num2str(c)]))),nTrls,1);
             thistable.boundary = repmat(table2array(ddm(ismember(ddm.Subject,subjects(s)),ismember(ddm.Properties.VariableNames,['boundary_C' num2str(c)]))),nTrls,1);
         end
+
+        thistable.Anxiety = repmat(stai.trait(s),nTrls,1);
+
+        L = [L; thistable];
+
     end
-
-    thistable.Anxiety = repmat(stai.trait(s),size(thistable,1),1);
-
-    % add to table
-    L = [L; thistable];
-
 end
 
 writetable(L,'D:\bCFS_EEG_Reanalysis\results\erponsets_alltrials.csv');
@@ -720,89 +602,102 @@ cmap = [0 232 255;
 % end
 % sgtitle('ROC onsets')
 
-for j = 1%:2
-    for i = 1:2
-    
+for j = 1:2 % stimulus-locked, response-locked
+    for i = 1:2 % channel group
+
         if i==1
             chanselection = {'PO4','PO8','O2','PO3','PO7','O1','Oz','POz'};
         elseif i==2
             chanselection = {'CPz','Cz','Pz'};
         end
-    
-        if j==1 % stimulus-locked onsets
-            thisy = squeeze(mean(onsets(:,:,ismember(labels,chanselection)),3));
-        elseif j==2 % response-locked onsets
-            thisy = squeeze(mean(rlonsets(:,:,ismember(labels,chanselection)),3));
-        end
-        thisy = zscore(thisy')';
-    
-        figure
-        m = mean(thisy);
-        sem = std(thisy)/sqrt(size(thisy,1));
-        upper = m+sem;
-        lower = m-sem;
-        for c = 1:4
-    
-            q = quantile(thisy(:,c),[.25 .75]);
-            patch([c-.15 c-.15 c+.15 c+.15],[q(1) q(2) q(2) q(1)],cmap(c,:),'facealpha',.25,'edgecolor',cmap(c,:)); hold on
-            plot([c c],[q(2) max(thisy(:,c))],'color',cmap(c,:),'linewidth',1.2); hold on
-            plot([c c],[q(1) min(thisy(:,c))],'color',cmap(c,:),'linewidth',1.2); hold on
-    
-            plot([c c],[lower(c) upper(c)],'k','linewidth',1.3); hold on
-            scatter(c,m(c),70,'markerfacecolor',cmap(c,:),'markeredgecolor','k'); hold on
-        end
-        [~,p] = ttest(thisy(:,2)-thisy(:,1),thisy(:,4)-thisy(:,3));
-        title([strjoin(chanselection,' ') ', p = ' num2str(round(p,3))])
-        xlim([0 5])
-        set(gca,'ticklength',[0 0])
-        set(gcf,'position',[715 332 296 336])
-    
-    %     % save
-    %     writetable(array2table(thisy,'variablenames',{'EN','UN','EF','UF'}),fullfile('D:\bCFS_EEG_Reanalysis\results',['erponsets_changroup' num2str(i) '.csv']))
-    
-        ST = array2table([[1:N]' thisy],'variablenames',{'subject','neutral_expected','neutral_unexpected','fearful_expected','fearful_unexpected'});
-        ST = stack(ST,{'neutral_expected','neutral_unexpected','fearful_expected','fearful_unexpected'});
-        ST.Properties.VariableNames = {'subject','condition','y'};
-        ST.emotion = double(ST.condition=='fearful_expected' | ST.condition=='fearful_unexpected');
-        ST.expectation = double(ST.condition=='neutral_unexpected' | ST.condition=='fearful_unexpected');
-        stats = rm_anova2(ST.y,ST.subject,ST.emotion,ST.expectation,{'Emotion','Expectation'});
-        stats = array2table(stats(2:end,:),'variablenames',stats(1,:))
-    
-        [~,p] = ttest(thisy(:,1),thisy(:,2));
-        disp(['EN vs UN: p = ' num2str(round(p,3))])
-    
-        [~,p] = ttest(thisy(:,3),thisy(:,4));
-        disp(['EF vs UF: p = ' num2str(round(p,3))])
-    
-        % correlate with DDM parameters
-        for j = 1:4
-    
+
+        tmp = squeeze(mean(rtcorr(:,ismember(labels,chanselection),:),2));
+        [~,p,~,tstat] = ttest(tmp(:,1),tmp(:,2));
+        disp(['SL Correlations of each onset type with RT: EARLY: ' num2str(round(mean(tmp(:,1)),3)) ', LATE: ' num2str(round(mean(tmp(:,2)),3)),...
+            ', t = ' num2str(round(tstat.tstat,3)) ', p = ' num2str(round(p,3))])
+
+        tmp = squeeze(mean(rlrtcorr(:,ismember(labels,chanselection),:),2));
+        [~,p,~,tstat] = ttest(tmp(:,1),tmp(:,2));
+        disp(['RL Correlations of each onset type with RT: EARLY: ' num2str(round(mean(tmp(:,1)),3)) ', LATE: ' num2str(round(mean(tmp(:,2)),3)),...
+            ', t = ' num2str(round(tstat.tstat,3)) ', p = ' num2str(round(p,3))])
+
+        for otype = 1:2 % early, late
+        
+            thisy = [];
+            if j==1 % stimulus-locked onsets
+                thisy = squeeze(mean(onsets(:,:,ismember(labels,chanselection),otype),3));
+            elseif j==2 % response-locked onsets
+                thisy = squeeze(mean(rlonsets(:,:,ismember(labels,chanselection),otype),3));
+            end
+            thisy = zscore(thisy')';
+        
             figure
-    
-            if j==1
-                thisparam = 'nondecision';
-            elseif j==2
-                thisparam = 'drift';
-            elseif j==3
-                thisparam = 'boundary';
-            elseif j==4
-                thisparam = 'rt';
+            m = mean(thisy);
+            sem = std(thisy)/sqrt(size(thisy,1));
+            upper = m+sem;
+            lower = m-sem;
+            for c = 1:4
+        
+                q = quantile(thisy(:,c),[.25 .75]);
+                patch([c-.15 c-.15 c+.15 c+.15],[q(1) q(2) q(2) q(1)],cmap(c,:),'facealpha',.25,'edgecolor',cmap(c,:)); hold on
+                plot([c c],[q(2) max(thisy(:,c))],'color',cmap(c,:),'linewidth',1.2); hold on
+                plot([c c],[q(1) min(thisy(:,c))],'color',cmap(c,:),'linewidth',1.2); hold on
+        
+                plot([c c],[lower(c) upper(c)],'k','linewidth',1.3); hold on
+                scatter(c,m(c),70,'markerfacecolor',cmap(c,:),'markeredgecolor','k'); hold on
             end
-    
-            if j<=3
-                thiseeg = squeeze(mean(onsets(ismember(subjects,ddm.Subject),:,ismember(SL.label,chanselection)),3));
-                thisddm = table2array(ddm(:,contains(ddm.Properties.VariableNames,thisparam)));
-            elseif j==4
-                thiseeg = squeeze(mean(onsets(:,:,ismember(SL.label,chanselection)),3));
-                thisddm = rts;
-                
-            end
-            scatter(thiseeg(:),thisddm(:),'markerfacecolor','k','markeredgecolor','none','markerfacealpha',.5); hold on
-            coeff = polyfit(thiseeg(:),thisddm(:),1);
-            thisline = polyval(coeff,thiseeg(:));
-            plot(thiseeg(:),thisline,'k'); hold on
-            [r,p] = corr(thiseeg(:),thisddm(:));
-            title([thisparam ': r=' num2str(round(r,3)) ', p=' num2str(round(p,3))])
+            [~,p] = ttest(thisy(:,2)-thisy(:,1),thisy(:,4)-thisy(:,3));
+            title([strjoin(chanselection,' ') ', p = ' num2str(round(p,3))])
+            xlim([0 5])
+            set(gca,'ticklength',[0 0])
+            set(gcf,'position',[715 332 296 336])
+        
+        %     % save
+        %     writetable(array2table(thisy,'variablenames',{'EN','UN','EF','UF'}),fullfile('D:\bCFS_EEG_Reanalysis\results',['erponsets_changroup' num2str(i) '.csv']))
+        
+            ST = array2table([[1:N]' thisy],'variablenames',{'subject','neutral_expected','neutral_unexpected','fearful_expected','fearful_unexpected'});
+            ST = stack(ST,{'neutral_expected','neutral_unexpected','fearful_expected','fearful_unexpected'});
+            ST.Properties.VariableNames = {'subject','condition','y'};
+            ST.emotion = double(ST.condition=='fearful_expected' | ST.condition=='fearful_unexpected');
+            ST.expectation = double(ST.condition=='neutral_unexpected' | ST.condition=='fearful_unexpected');
+            stats = rm_anova2(ST.y,ST.subject,ST.emotion,ST.expectation,{'Emotion','Expectation'});
+            stats = array2table(stats(2:end,:),'variablenames',stats(1,:))
+        
+            [~,p] = ttest(thisy(:,1),thisy(:,2));
+            disp(['EN vs UN: p = ' num2str(round(p,3))])
+        
+            [~,p] = ttest(thisy(:,3),thisy(:,4));
+            disp(['EF vs UF: p = ' num2str(round(p,3))])
+
+%             % correlate with DDM parameters
+%             for k = 1:4
+%         
+%                 figure
+%         
+%                 if k==1
+%                     thisparam = 'nondecision';
+%                 elseif k==2
+%                     thisparam = 'drift';
+%                 elseif k==3
+%                     thisparam = 'boundary';
+%                 elseif k==4
+%                     thisparam = 'rt';
+%                 end
+%         
+%                 if k<=3
+%                     thiseeg = squeeze(mean(onsets(ismember(subjects,ddm.Subject),:,ismember(SL.label,chanselection)),3));
+%                     thisddm = table2array(ddm(:,contains(ddm.Properties.VariableNames,thisparam)));
+%                 elseif k==4
+%                     thiseeg = squeeze(mean(onsets(:,:,ismember(SL.label,chanselection)),3));
+%                     thisddm = rts;
+%                 end
+%                 scatter(thiseeg(:),thisddm(:),'markerfacecolor','k','markeredgecolor','none','markerfacealpha',.5); hold on
+%                 coeff = polyfit(thiseeg(:),thisddm(:),1);
+%                 thisline = polyval(coeff,thiseeg(:));
+%                 plot(thiseeg(:),thisline,'k'); hold on
+%                 [r,p] = corr(thiseeg(:),thisddm(:));
+%                 title([thisparam ': r=' num2str(round(r,3)) ', p=' num2str(round(p,3))])
+%             end
         end
     end
 end
