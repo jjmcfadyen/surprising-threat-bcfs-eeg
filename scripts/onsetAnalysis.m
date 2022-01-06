@@ -36,7 +36,6 @@ datatype = 'orig';
 %% Estimate onsets for each trial
 
 Y = [];
-ROC = [];
 rts = nan(N,4);
 missingdata = nan(N,64,2,nIterations+1);
 onsets = nan(N,4,64,2);
@@ -90,7 +89,9 @@ for s = 1:N
     end
 
     % See when each trial & each channel exceeds a certain threshold
+    tic
     [trlonsets,rltrlonsets] = estimateOnsets(d,X(xidx),T.RT(idx),T.Condition(idx),nIterations);
+    toc
 
     orig = [];
     orig.trlonsets = squeeze(trlonsets(:,:,:,1));
@@ -222,8 +223,81 @@ end
 labels = SL.label;
 x = X(xidx);
 
-% save('erponsets.mat',...
-%     'onsets','rlonsets','alltrialonsets','allrltrialonsets','rts','missingdata','onsetdata','rlonsetdata','rtonsetdata','onsetsamplemin','onsetsamplegap','driftwindow','labels','x');
+save('erponsets.mat',...
+    'onsets','rlonsets','alltrialonsets','allrltrialonsets','rts','missingdata','onsetdata','rlonsetdata','rtonsetdata','driftwindow','labels','x');
+
+% plot histograms
+% get all trial onset times and convert to percentage
+y = [];
+ypcnt = [];
+for s = 1:N
+
+    subject = subjects(s);
+    if subject < 10
+        schar = ['S0' num2str(subject)];
+    else
+        schar = ['S' num2str(subject)];
+    end
+    [~,~,T,idx] = select_data(fullfile(dir_data,'newepoched',[schar '_FT_epoched_bc' num2str(baselineCorrect(b)) '.mat']),neighbours,standardType{st},datatype);
+    
+    tmp = alltrialonsets{s,1};
+    tmprt = T.RT(T.Condition==1 & idx);
+    for c = 2:4
+        cc = [size(tmp,1)+1 size(tmp,1)+size(alltrialonsets{s,c},1)];
+        tmp(cc(1):cc(2),:,:) = alltrialonsets{s,c};
+        tmprt = [tmprt; T.RT(T.Condition==c & idx)];
+    end
+    tmp = squeeze(mean(tmp(:,ismember(labels,{'CPz','Cz','Pz','PO4','PO8','O2','PO3','PO7','O1','Oz','POz'}),:),2));
+
+    y = [y; tmp tmprt];
+    ypcnt = [ypcnt; tmp ./ tmprt];
+end
+
+cmap = [243, 140, 255 ;
+        66, 0, 213]/255;
+
+figure
+subplot(2,1,1)
+for c = 1:2
+
+    [bincounts,binedges] = histcounts(y(:,c),'binwidth',0.1);
+    bincenters = binedges(1:end-1)+diff(binedges)/2;
+    
+    bar(bincenters,bincounts,1,'facecolor',cmap(c,:),'facealpha',0.5); hold on
+
+    pd = fitdist(y(:,c),'normal');
+    q = icdf(pd,[0.0013499 0.99865]); % three-sigma range for normal distribution
+    thisx = linspace(q(1),q(2));
+
+    binwidth = binedges(2)-binedges(1); % Finds the width of each bin
+    area = size(y,1) * binwidth;
+    thisfit = area * pdf(pd,thisx);
+
+    plot(thisx,thisfit,'color',cmap(c,:),'linewidth',1.3); hold on
+end
+set(gca,'ticklength',[0 0])
+xlim([0 3])
+
+subplot(2,1,2)
+for c = 1:2
+
+    [bincounts,binedges] = histcounts(ypcnt(:,c),'binwidth',0.05);
+    bincenters = binedges(1:end-1)+diff(binedges)/2;
+    
+    bar(bincenters,bincounts,1,'facecolor',cmap(c,:),'facealpha',0.5); hold on
+
+    pd = fitdist(ypcnt(:,c),'normal');
+    q = icdf(pd,[0.0013499 0.99865]); % three-sigma range for normal distribution
+    thisx = linspace(q(1),q(2));
+
+    binwidth = binedges(2)-binedges(1); % Finds the width of each bin
+    area = size(ypcnt,1) * binwidth;
+    thisfit = area * pdf(pd,thisx);
+
+    plot(thisx,thisfit,'color',cmap(c,:),'linewidth',1.3); hold on
+end
+set(gca,'ticklength',[0 0])
+xlim([0 1])
 
 %% Plot
 
@@ -234,35 +308,6 @@ chanselection{2} = {'CPz','Cz','Pz'};
 cmap = [243, 140, 255 ;
         178, 71, 255 ;
         66, 0, 213]/255;
-
-% Data grouped by onset time
-% figure
-% for chan = 1:size(Y,3)
-% 
-%     subplot(8,8,chan)
-% 
-%     for i = 1:3
-% 
-%         y = squeeze(onsetdata(:,i,chan,:));
-%         m = mean(y);
-%         sem = std(y)/sqrt(size(y,1));
-%         upper = m+sem;
-%         lower = m-sem;
-% 
-%         patch([x fliplr(x)],[upper fliplr(lower)],cmap(i,:),'facealpha',.2,'edgealpha',0); hold on
-%         plot(x,m,'color',cmap(i,:),'linewidth',1.3); hold on
-%     end
-%     
-%     ax = gca;
-%     for i = 1:3
-%         plot(repmat(mean(rtonsetdata(:,i,chan,1)),2,1),ax.YLim,'color',cmap(i,:),'linewidth',1.2,'linestyle','--'); hold on
-%     end
-%     plot(x([1 end]),[0 0],'k:'); hold on
-%     title(labels{chan})
-%     xlim(x([1 end]))
-% 
-% end
-% sgtitle('SL onset times (fast, medium, slow)')
 
 for j = 1:2
     figure
@@ -278,7 +323,7 @@ for j = 1:2
             upper = m+sem;
             lower = m-sem;
     
-            patch([x fliplr(x)],[upper fliplr(lower)],cmap(i,:),'facealpha',.2,'edgealpha',0); hold on
+%             patch([x fliplr(x)],[upper fliplr(lower)],cmap(i,:),'facealpha',.2,'edgealpha',0); hold on
             plot(x,m,'color',cmap(i,:),'linewidth',1.3); hold on
         end
         
@@ -300,38 +345,6 @@ end
 
 % -- response-locked
 thisx = x - 2.9;
-
-% figure
-% for chan = 1:size(Y,3)
-% 
-%     subplot(8,8,chan)
-% 
-%     for i = 1:3
-% 
-%         y = squeeze(rlonsetdata(:,i,chan,:));
-%         m = nanmean(y);
-%         sem = nanstd(y)/sqrt(size(y,1));
-%         upper = m+sem;
-%         lower = m-sem;
-% 
-%         patch([thisx fliplr(thisx)],[upper fliplr(lower)],cmap(i,:),'facealpha',.2,'edgealpha',0); hold on
-%         plot(thisx,m,'color',cmap(i,:),'linewidth',1.3); hold on
-%     end
-%     
-%     ax = gca;
-%     for i = 1:3
-%         plot(repmat(nanmean(rtonsetdata(:,i,chan,2)),2,1),ax.YLim,'color',cmap(i,:),'linewidth',1.2,'linestyle','--'); hold on
-%     end
-%     tmpx = ~isnan(squeeze(nanmean(nanmean(rlonsetdata(:,:,chan,:)),2)));
-%     tmpx = thisx([find(tmpx,1,'first') find(tmpx,1,'last')]);
-%     plot(tmpx,[0 0],'k:'); hold on
-%     plot([0 0],ax.YLim,'k:'); hold on
-%     title(SL.label{chan})
-%     xlim([-1.5 0.1])
-% 
-% end
-% sgtitle('RL onset times (fast, medium, slow)')
-
 for j = 1:2
     figure
     for chan = 1:length(chanselection) % specific channel groupings
@@ -347,7 +360,7 @@ for j = 1:2
             lower = m-sem;
     
             nanidx = isnan(upper) | isnan(lower);
-            patch([thisx(~nanidx) fliplr(thisx(~nanidx))],[upper(~nanidx) fliplr(lower(~nanidx))],cmap(i,:),'facealpha',.2,'edgealpha',0); hold on
+%             patch([thisx(~nanidx) fliplr(thisx(~nanidx))],[upper(~nanidx) fliplr(lower(~nanidx))],cmap(i,:),'facealpha',.2,'edgealpha',0); hold on
             plot(thisx,m,'color',cmap(i,:),'linewidth',1.3); hold on
         end
         
@@ -370,57 +383,6 @@ for j = 1:2
         sgtitle('RL late onset times (fast, medium, slow)')
     end
 end
-
-% % Data itself
-% 
-% cmap = [0 232 255;
-%         51 110 255;
-%         255 186 48;
-%         255 0 0]/255;
-% 
-% figure
-% for chan = 1:size(Y,3)
-% 
-%     subplot(8,8,chan)
-%     for c = 1:4
-% 
-%         y = squeeze(Y(:,c,chan,:));
-%         % z score each subject?
-%         m = mean(y);
-%         sem = std(y)/sqrt(size(y,1));
-%         upper = m+sem;
-%         lower = m-sem;
-% 
-%         patch([x fliplr(x)],[upper fliplr(lower)],cmap(c,:),'facealpha',.2,'edgealpha',0); hold on
-%         plot(x,m,'color',cmap(c,:),'linewidth',1.3); hold on
-%     end
-%     plot(x([1 end]),[0 0],'k:'); hold on
-%     title(SL.label{chan})
-%     xlim(x([1 end]))
-%     
-% end
-% sgtitle('Data')
-% 
-% figure
-% for chan = 1:size(ROC,3)
-% 
-%     subplot(8,8,chan)
-%     for c = 1:4
-% 
-%         y = squeeze(ROC(:,c,chan,2:end));
-%         m = mean(y);
-%         sem = std(y)/sqrt(size(y,1));
-%         upper = m+sem;
-%         lower = m-sem;
-% 
-%         patch([x(2:end) fliplr(x(2:end))],[upper fliplr(lower)],cmap(c,:),'facealpha',.2,'edgealpha',0); hold on
-%         plot(x(2:end),m,'color',cmap(c,:),'linewidth',1.3); hold on
-%     end
-%     plot(x([1 end]),[0 0],'k:'); hold on
-%     title(SL.label{chan})
-%     xlim(x([1 end]))
-% end
-% sgtitle('Rate of change')
 
 %% Save trial onsets to long table for analysis in R
 
@@ -452,49 +414,70 @@ for s = 1:N
 
     [~,~,T,idx] = select_data(fullfile(dir_data,'newepoched',[schar '_FT_epoched_bc' num2str(baselineCorrect(b)) '.mat']),neighbours,standardType{st},datatype);
 
-    for c = 1:4
+    for c = 1:4 % trials batched into conditions
 
         nTrls = size(alltrialonsets{s,c},1);
 
-        thistable = array2table([repmat(s,nTrls,1) repmat(c,nTrls,1)],'variablenames',{'Subject','Condition'});
-        if c <= 2
-            thistable.Emotion = repmat({'Neutral'},nTrls,1);
-        else
-            thistable.Emotion = repmat({'Fearful'},nTrls,1);
+        for chan = 1:length(chanselection) % electrode type
+            for o = 1:3 % change point type (early, late, or difference)
+    
+                thistable = array2table([repmat(s,nTrls,1) repmat(c,nTrls,1)],'variablenames',{'Subject','Condition'});
+                thistable.Trial = find(T.Condition==c & idx);
+
+                if c <= 2
+                    thistable.Emotion = repmat({'Neutral'},nTrls,1);
+                else
+                    thistable.Emotion = repmat({'Fearful'},nTrls,1);
+                end
+                if c ==1 || c==3
+                    thistable.Expectation = repmat({'Expected'},nTrls,1);
+                else
+                    thistable.Expectation = repmat({'Unexpected'},nTrls,1);
+                end
+
+                if chan==1
+                    thistable.Electrode = repmat({'parietaloccipital'},nTrls,1);
+                elseif chan==2
+                    thistable.Electrode = repmat({'centralparietal'},nTrls,1);
+                end
+
+                if o==1
+                    thistable.onsetType = repmat({'early'},nTrls,1);
+                elseif o==2
+                    thistable.onsetType = repmat({'late'},nTrls,1);
+                elseif o==3
+                    thistable.onsetType = repmat({'diff'},nTrls,1);
+                end
+        
+                if o<=2
+                    thistable.onsetSL = mean(alltrialonsets{s,c}(:,ismember(labels,chanselection{chan}),o),2);
+                    thistable.onsetRL = mean(allrltrialonsets{s,c}(:,ismember(labels,chanselection{chan}),o),2);
+                elseif o==3
+                    thistable.onsetSL = mean(alltrialonsets{s,c}(:,ismember(labels,chanselection{chan}),2),2) - mean(alltrialonsets{s,c}(:,ismember(labels,chanselection{chan}),1),2);
+                    thistable.onsetRL = mean(allrltrialonsets{s,c}(:,ismember(labels,chanselection{chan}),2),2) - mean(allrltrialonsets{s,c}(:,ismember(labels,chanselection{chan}),1),2);
+                end
+                thistable.slope = mean(alltrialdrifts{s,c}(:,ismember(labels,chanselection{chan})),2);
+        
+                thistable.RT = T.RT(idx & T.Condition==c);
+        
+                thistable.nondecision = nan(nTrls,1);
+                thistable.drift = nan(nTrls,1);
+                thistable.boundary = nan(nTrls,1);
+                if any(ismember(ddm.Subject,subjects(s)))
+                    thistable.nondecision = repmat(table2array(ddm(ismember(ddm.Subject,subjects(s)),ismember(ddm.Properties.VariableNames,['nondecision_C' num2str(c)]))),nTrls,1);
+                    thistable.drift = repmat(table2array(ddm(ismember(ddm.Subject,subjects(s)),ismember(ddm.Properties.VariableNames,['drift_C' num2str(c)]))),nTrls,1);
+                    thistable.boundary = repmat(table2array(ddm(ismember(ddm.Subject,subjects(s)),ismember(ddm.Properties.VariableNames,['boundary_C' num2str(c)]))),nTrls,1);
+                end
+        
+                thistable.Anxiety = repmat(stai.trait(s),nTrls,1);
+        
+                L = [L; thistable];
+            end
         end
-        if c ==1 || c==3
-            thistable.Expectation = repmat({'Expected'},nTrls,1);
-        else
-            thistable.Expectation = repmat({'Unexpected'},nTrls,1);
-        end
-
-        for chan = 1:length(chanselection)
-            thistable.([changroupnames{chan} 'onsetSL']) = mean(alltrialonsets{s,c}(:,ismember(labels,chanselection{chan})),2);
-            thistable.([changroupnames{chan} 'onsetRL']) = mean(allrltrialonsets{s,c}(:,ismember(labels,chanselection{chan})),2);
-            thistable.([changroupnames{chan} 'drift']) = mean(alltrialdrifts{s,c}(:,ismember(labels,chanselection{chan})),2);
-        end
-
-        thistable.RT = T.RT(idx & T.Condition==c);
-
-        thistable.nondecision = nan(nTrls,1);
-        thistable.drift = nan(nTrls,1);
-        thistable.boundary = nan(nTrls,1);
-
-        if any(ismember(ddm.Subject,subjects(s)))
-            thistable.nondecision = repmat(table2array(ddm(ismember(ddm.Subject,subjects(s)),ismember(ddm.Properties.VariableNames,['nondecision_C' num2str(c)]))),nTrls,1);
-            thistable.drift = repmat(table2array(ddm(ismember(ddm.Subject,subjects(s)),ismember(ddm.Properties.VariableNames,['drift_C' num2str(c)]))),nTrls,1);
-            thistable.boundary = repmat(table2array(ddm(ismember(ddm.Subject,subjects(s)),ismember(ddm.Properties.VariableNames,['boundary_C' num2str(c)]))),nTrls,1);
-        end
-
-        thistable.Anxiety = repmat(stai.trait(s),nTrls,1);
-
-        L = [L; thistable];
-
     end
 end
 
 writetable(L,'D:\bCFS_EEG_Reanalysis\results\erponsets_alltrials.csv');
-
 
 %%
 % Onsets & drifts
@@ -503,112 +486,25 @@ ddm.Subject(ddm.Experiment==2) = ddm.Subject(ddm.Experiment==2)-31; % 31 subject
 ddm = ddm(ddm.Experiment==2,:);
 ddm = ddm(ismember(ddm.Subject,subjects),:);
 
-% ter = [ddm.nondecision_EN ddm.nondecision_UN ddm.nondecision_EF ddm.nondecision_UF];
-% v = [ddm.drift_EN ddm.drift_UN ddm.drift_EF ddm.drift_UF];
-
-% cmap = [141, 34, 255
-%     229, 131, 255]/255;
-% for i = 1:2
-%     
-%     figure
-% 
-%     if i==1
-%         thisddm = ter;
-%     elseif i==2
-%         thisddm = v;
-%     end
-%     thisddm = thisddm(:);
-% 
-%     for chan = 1:size(Y,3)
-%     
-%         thiseeg = squeeze(Y(ismember(subjects,ddm.Subject),:,chan,:));
-%         thiseeg = reshape(thiseeg,size(thiseeg,1)*size(thiseeg,2),size(thiseeg,3));
-% 
-%         subplot(8,8,chan)
-%         for c = 1:2 % low, high
-%     
-%             if c==1
-%                 cidx = thisddm<median(thisddm);
-%             elseif c==2
-%                 cidx = thisddm>median(thisddm);
-%             end
-% 
-%             y =  thiseeg(cidx,:);
-%             m = mean(y);
-%             sem = std(y)/sqrt(size(y,1));
-%             upper = m+sem;
-%             lower = m-sem;
-%     
-%             patch([x fliplr(x)],[upper fliplr(lower)],cmap(c,:),'facealpha',.2,'edgealpha',0); hold on
-%             plot(x,m,'color',cmap(c,:),'linewidth',1.3); hold on
-%         end
-%         plot(x([1 end]),[0 0],'k:'); hold on
-%         title(SL.label{chan})
-%         
-%     end
-%     if i==1
-%         sgtitle('Nondecision time')
-%     elseif i==2
-%         sgtitle('Drift rate')
-%     end
-% end
-% 
-% zonsets = onsets;
-% for s = 1:N
-%     for chan = 1:nChan
-%         zonsets(s,:,chan) = zscore(squeeze(onsets(s,:,chan)));
-%     end
-% end
-% 
-% % remove onset outliers
-% ronsets = onsets;
-% rzonsets = zonsets;
-% for s = 1:N
-%     for chan = 1:nChan
-%         tmp = [];
-%         for c = 1:4
-%             tmp = [tmp; alltrialonsets{s,c}(:,chan) ones(size(alltrialonsets{s,c},1),1)*c];
-%         end
-%         ridx = (tmp(:,1) - nanmean(tmp(:,1))) / nanstd(tmp(:,1));
-%         ridx = double(abs(ridx) > 3);
-%         ridx(isnan(ridx)) = 1;
-%         for c = 1:4
-%             ronsets(s,c,chan) = nanmean(tmp(tmp(:,2)==c & ~ridx,1));
-%         end
-%         rzonsets(s,:,chan) = zscore(squeeze(ronsets(s,:,chan)));
-%     end
-% end
-
 cmap = [0 232 255;
         51 110 255;
         255 186 48;
         255 0 0]/255;
 
-% figure
-% for chan = 1:64
-%     subplot(8,8,chan)
-%     thisy = squeeze(onsets(:,:,chan));
-%     thisy = zscore(thisy')';
-%     m = mean(thisy);
-%     sem = std(thisy)/sqrt(size(thisy,1));
-%     upper = m+sem;
-%     lower = m-sem;
-%     for c = 1:4
-%         plot([c c],[lower(c) upper(c)],'k','linewidth',1.3); hold on
-%         scatter(c,m(c),70,'markerfacecolor',cmap(c,:),'markeredgecolor','k'); hold on
-%     end
-%     [~,p] = ttest(thisy(:,2)-thisy(:,1),thisy(:,4)-thisy(:,3));
-%     title([SL.label{chan} ', p = ' num2str(round(p,3))])
-% end
-% sgtitle('ROC onsets')
-
-for j = 1:2 % stimulus-locked, response-locked
-    for i = 1:2 % channel group
+for j = 1%:2 % stimulus-locked, response-locked
+    if j==1
+        locktype = 'SL';
+    elseif j==2
+        locktype = 'RL';
+    end
+    for i = 1:3 % channel group
 
         if i==1
             chanselection = {'PO4','PO8','O2','PO3','PO7','O1','Oz','POz'};
         elseif i==2
             chanselection = {'CPz','Cz','Pz'};
+        elseif i==3
+            chanselection = {'PO4','PO8','O2','PO3','PO7','O1','Oz','POz','CPz','Cz','Pz'};
         end
 
         tmp = squeeze(mean(rtcorr(:,ismember(labels,chanselection),:),2));
@@ -623,6 +519,12 @@ for j = 1:2 % stimulus-locked, response-locked
 
         for otype = 1:2 % early, late
         
+            if otype==1
+                otitle = 'early';
+            elseif otype==2
+                otitle = 'late';
+            end
+
             thisy = [];
             if j==1 % stimulus-locked onsets
                 thisy = squeeze(mean(onsets(:,:,ismember(labels,chanselection),otype),3));
@@ -647,10 +549,10 @@ for j = 1:2 % stimulus-locked, response-locked
                 scatter(c,m(c),70,'markerfacecolor',cmap(c,:),'markeredgecolor','k'); hold on
             end
             [~,p] = ttest(thisy(:,2)-thisy(:,1),thisy(:,4)-thisy(:,3));
-            title([strjoin(chanselection,' ') ', p = ' num2str(round(p,3))])
+            title([locktype ', ' otitle ', ' strjoin(chanselection,' ') ', p = ' num2str(round(p,3))])
             xlim([0 5])
             set(gca,'ticklength',[0 0])
-            set(gcf,'position',[715 332 296 336])
+%             set(gcf,'position',[715 332 296 336])
         
         %     % save
         %     writetable(array2table(thisy,'variablenames',{'EN','UN','EF','UF'}),fullfile('D:\bCFS_EEG_Reanalysis\results',['erponsets_changroup' num2str(i) '.csv']))
@@ -669,176 +571,65 @@ for j = 1:2 % stimulus-locked, response-locked
             [~,p] = ttest(thisy(:,3),thisy(:,4));
             disp(['EF vs UF: p = ' num2str(round(p,3))])
 
-%             % correlate with DDM parameters
-%             for k = 1:4
-%         
-%                 figure
-%         
-%                 if k==1
-%                     thisparam = 'nondecision';
-%                 elseif k==2
-%                     thisparam = 'drift';
-%                 elseif k==3
-%                     thisparam = 'boundary';
-%                 elseif k==4
-%                     thisparam = 'rt';
-%                 end
-%         
-%                 if k<=3
-%                     thiseeg = squeeze(mean(onsets(ismember(subjects,ddm.Subject),:,ismember(SL.label,chanselection)),3));
-%                     thisddm = table2array(ddm(:,contains(ddm.Properties.VariableNames,thisparam)));
-%                 elseif k==4
-%                     thiseeg = squeeze(mean(onsets(:,:,ismember(SL.label,chanselection)),3));
-%                     thisddm = rts;
-%                 end
-%                 scatter(thiseeg(:),thisddm(:),'markerfacecolor','k','markeredgecolor','none','markerfacealpha',.5); hold on
-%                 coeff = polyfit(thiseeg(:),thisddm(:),1);
-%                 thisline = polyval(coeff,thiseeg(:));
-%                 plot(thiseeg(:),thisline,'k'); hold on
-%                 [r,p] = corr(thiseeg(:),thisddm(:));
-%                 title([thisparam ': r=' num2str(round(r,3)) ', p=' num2str(round(p,3))])
-%             end
+            % correlate with DDM parameters
+            for k = 1:3
+        
+                figure
+        
+                if k==1
+                    thisparam = 'nondecision';
+                elseif k==2
+                    thisparam = 'drift';
+                elseif k==3
+                    thisparam = 'boundary';
+                elseif k==4
+                    thisparam = 'rt';
+                end
+
+                if k<=3
+                    if j==1 % stimulus-locked onsets
+                        thiseeg = squeeze(mean(onsets(ismember(subjects,ddm.Subject),:,ismember(labels,chanselection),otype),3));
+                    elseif j==2 % response-locked onsets
+                        thiseeg = squeeze(mean(rlonsets(ismember(subjects,ddm.Subject),:,ismember(labels,chanselection),otype),3));
+                    end
+                    thisddm = table2array(ddm(:,contains(ddm.Properties.VariableNames,thisparam)));
+                elseif k==4
+                    if j==1 % stimulus-locked onsets
+                        thiseeg = squeeze(mean(onsets(:,:,ismember(labels,chanselection),otype),3));
+                    elseif j==2 % response-locked onsets
+                        thiseeg = squeeze(mean(rlonsets(:,:,ismember(labels,chanselection),otype),3));
+                    end
+                    thisddm = rts;
+                end
+                thiseeg = zscore(thiseeg')';
+                thisddm = zscore(thisddm')';
+
+                scatter(thiseeg(:),thisddm(:),'markerfacecolor','k','markeredgecolor','none','markerfacealpha',.5); hold on
+                coeff = polyfit(thiseeg(:),thisddm(:),1);
+                thisline = polyval(coeff,thiseeg(:));
+                plot(thiseeg(:),thisline,'k'); hold on
+                [r,p] = corr(thiseeg(:),thisddm(:));
+                title([locktype ', ' otitle ', ' strjoin(chanselection,' ') ', ' thisparam ': r=' num2str(round(r,3)) ', p=' num2str(round(p,3))])
+            end
         end
+
+%         % correlation with RT
+%         thisy = squeeze(mean(rtcorr(:,ismember(labels,chanselection),:),2));
+%         m = mean(thisy);
+%         sem = std(thisy)/sqrt(size(thisy,1));
+%         upper = m+sem;
+%         lower = m-sem;
+%         figure
+%         bar(m); hold on
+%         for c = 1:2
+%             plot([c c],[upper(c) lower(c)],'k'); hold on
+%         end
+%         set(gca,'xticklabels',{'early','late'})
+%         [~,p,~,tstats] = ttest(thisy(:,1),thisy(:,2));
+%         title([locktype ', ' strjoin(chanselection,' ') ', onset-RT correlation: p = ' num2str(p)])
+
     end
 end
-
-
-% thisy = [];
-% for s = 1:N
-%     suby = [];
-%     for c = 1:4
-%         suby = [suby; alltrialonsets{s,c}' ones(length(alltrialonsets{s,c}),1)*c];
-%     end
-%     suby(:,1) = zscore(suby(:,1));
-% %     suby(abs(suby(:,1))>3,:) = []; % remove outliers
-%     for c = 1:4
-%         thisy(s,c) = mean(suby(suby(:,2)==c,1));
-%     end
-% end
-% 
-% figure
-% for c = 1:4
-%     binwidth = diff(linspace(min(thisy(c,:)),max(thisy(c,:)),20));
-%     binwidth = binwidth(1);
-% 
-%     [x,y] = beeswarm(thisy(:,c),binwidth,0.15);
-% 
-%     q = quantile(y,[.25 .75]);
-%     patch([c-.15 c-.15 c+.15 c+.15],[q(1) q(2) q(2) q(1)],cmap(c,:),'facealpha',.25,'edgecolor',cmap(c,:)); hold on
-%     plot([c c],[q(2) max(thisy(:,c))],'color',cmap(c,:),'linewidth',1.2); hold on
-%     plot([c c],[q(1) min(thisy(:,c))],'color',cmap(c,:),'linewidth',1.2); hold on
-% 
-%     scatter(x+c,y,30,'markerfacecolor',cmap(c,:),'markeredgecolor','none','markerfacealpha',.5); hold on
-% 
-%     m = mean(y);
-%     sem = std(y)/sqrt(size(y,1));
-%     upper = m+sem;
-%     lower = m-sem;
-% 
-%     plot([c c],[lower upper],'k','linewidth',1.3); hold on
-%     scatter(c,m,70,'markerfacecolor',cmap(c,:),'markeredgecolor','k'); hold on
-% 
-% end
-% xlim([0 5])
-% set(gca,'ticklength',[0 0])
-% sgtitle('ROC onsets')
-% 
-% 
-% tmpx = X(xidx);
-% avonsets = nan(N,4);
-% for s = 1:N
-%     for c = 1:4
-%         thisbaseline = abs(squeeze(nanmean(Y(s,c,:,tmpx<=0),4)));
-%         tp = find(tmpx==0);
-%         pvals = [];
-%         while true
-%             tp = tp+1;
-%             if tp>=size(Y,3)
-%                 break
-%             end
-%             [~,p] = ttest(abs(squeeze(Y(s,c,:,tp))),thisbaseline,'tail','right');
-%             pvals = [pvals p];
-%             if length(pvals)>=onsetsamplemin
-%                 if all(pvals(end-onsetsamplemin+1:end) < .05)
-%                     avonsets(s,c) = tmpx(tp-onsetsamplemin);
-%                     break
-%                 end
-%             end
-%             if isnan(avonsets(s,c))
-%                 avonsets(s,c) = tmpx(find(pvals==min(pvals),1,'first'));
-%             end
-%         end
-%     end
-% end
-% avonsets = zscore(avonsets')';
-
-
-
-
-% 
-% 
-% figure
-% for chan = 1:64
-%     subplot(8,8,chan)
-%     thisy = squeeze(abs(trialdrifts(:,:,chan)));
-%     m = mean(thisy);
-%     sem = std(thisy)/sqrt(size(thisy,1));
-%     upper = m+sem;
-%     lower = m-sem;
-%     for c = 1:4
-%         plot([c c],[lower(c) upper(c)],'k','linewidth',1.3); hold on
-%         scatter(c,m(c),70,'markerfacecolor',cmap(c,:),'markeredgecolor','k'); hold on
-%     end
-%     title([SL.label{chan}])
-% end
-% sgtitle('Drift -800 to -200 ms pre-response onset')
-% 
-% 
-% for i = 1:2
-%     figure
-%     for chan = 1:64
-%     
-%         subplot(8,8,chan)
-%     
-%         thisy = squeeze(onsets(ismember(subjects,ddm.Subject),chan,:,1));
-%         thisy = zscore(thisy')';
-% 
-%         if i==1
-%             thisx = ter;
-%         elseif i==2
-%             thisx = v;
-%         end
-%     
-%         thisy = thisy(:);
-%         thisx = thisx(:);
-%     
-%         nanidx = isnan(thisy);
-%         thisy = thisy(~nanidx);
-%         thisx = thisx(~nanidx);
-%     
-% %         [rho,p] = corr(thisx,thisy);
-% %         scatter(thisy,thisx); hold on
-% %         coeff = polyfit(thisy,thisx,1);
-% %         fitline = polyval(coeff,thisy);
-% %         plot(thisy,fitline,'k');
-%         
-%         m = mean([thisy(thisx<median(thisx)) thisy(thisx>median(thisx))]);
-%         sd = std([thisy(thisx<median(thisx)) thisy(thisx>median(thisx))]);
-%         
-%         bar(m); hold on
-%         for j = 1:2
-%             plot([j j],[m(j)-(sd(j)/2) m(j)+(sd(j)/2)],'k');
-%         end
-%         [h,p] = ttest(thisy(thisx<median(thisx)),thisy(thisx>median(thisx)));
-% 
-%         title([SL.label{chan} ': p = ' num2str(round(p,3))])
-%     end
-%     if i==1
-%         sgtitle('Onset vs Nondecision time')
-%     elseif i==2
-%         sgtitle('Onset vs Drift rate')
-%     end
-% end
 
 %% Cluster-based permutation 
 

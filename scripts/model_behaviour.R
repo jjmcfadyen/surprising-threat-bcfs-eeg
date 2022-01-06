@@ -144,6 +144,8 @@ if (experiment < 3) {
             d,REML=F)
   anova(m0,m,m1)
   
+  emtrends(m, pairwise~Emotion*Expectation, var="TraitAnxiety")
+  
   # save subject means for Bayes analysis in JASP
   sm <- d %>% 
     group_by(Subject,Emotion,Expectation) %>%
@@ -500,6 +502,7 @@ T$Condition[T$Emotion=="neutral" & T$Expectation=="unexpected"] = 2
 T$Condition[T$Emotion=="fearful" & T$Expectation=="expected"] = 3
 T$Condition[T$Emotion=="fearful" & T$Expectation=="unexpected"] = 4
 
+# z-score
 T <- T %>%
   group_by(Subject) %>%
   mutate(Drift=scale(Drift),
@@ -567,10 +570,10 @@ write.csv(csvtable,"ddmparams.csv",row.names=FALSE)
 
 
 
-T$Drift <- scale(T$Drift,center=TRUE,scale=FALSE)
-T$Boundary <- scale(T$Boundary,center=TRUE,scale=FALSE)
-T$Nondecision <- scale(T$Nondecision,center=TRUE,scale=FALSE)
-T$TraitAnxiety <- scale(T$TraitAnxiety,center=TRUE,scale=FALSE)
+# T$Drift <- scale(T$Drift,center=TRUE,scale=FALSE)
+# T$Boundary <- scale(T$Boundary,center=TRUE,scale=FALSE)
+# T$Nondecision <- scale(T$Nondecision,center=TRUE,scale=FALSE)
+# T$TraitAnxiety <- scale(T$TraitAnxiety,center=TRUE,scale=FALSE)
 
 m_drift <- lmer(Drift ~ Emotion*Expectation + (1|Subject),T,REML=F)
 summary(m_drift)

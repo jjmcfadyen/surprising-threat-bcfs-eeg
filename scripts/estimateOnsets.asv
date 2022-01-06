@@ -11,7 +11,8 @@ function [trlonsets rltrlonsets] = estimateOnsets(Y,X,rt,conditions,nIterations)
 %% Set parameters
 
 onsettimemin = 0.1; % can't have an onset before 100 ms
-onsetlatewindow = 0.5; % how many seconds before RT to look for motor/decision-related increase in activity
+onsetrtbuffer = 0.3; % don't look at activity in the 100 ms leading up to response
+stepsize = 0.05; % step size in increasing window, in ms
 
 %% Get info
 
@@ -20,8 +21,10 @@ nChan = size(Y,2);
 
 %% Estimate onsets
 
+X = round(X,3);
+
 % Crop data
-xidx = X>onsettimemin & X<3;
+xidx = X>=0 & X<3;
 Y = Y(:,:,xidx);
 X = X(xidx);
 
@@ -29,67 +32,76 @@ X = X(xidx);
 trlonsets = nan(nTrls,nChan,2,nIterations+1);
 rltrlonsets = nan(nTrls,nChan,2,nIterations+1);
 parfor trl = 1:nTrls
+
     disp(['Trial ' num2str(trl)])
     thisrt = rt(trl);
+    thisidx = X>=onsettimemin & X<=(thisrt-onsetrtbuffer);
+    thisx = X(thisidx);
+    thisy = squeeze(Y(trl,:,thisidx));
+
     for chan = 1:nChan
 
-        % estimate onsets for an ever-increasing window (e.g., 0 to 1, 0 to 10, 0 to 20, 0 to 30, ... 0 to 3)
-        thisonset = [];
-        tp = X(2);
-        tplist = [tp];
-        while round(tp,3) <= thisrt
+        % find most significant change using ever-increasing window
+        fwdtp = thisx(1)+stepsize;
+        bwdtp = thisx(end)-stepsize;
+        fwdonsets = [];
+        bwdonsets = [];
+        fwdtplist = [];
+        bwdtplist = [];
+        while true
+            
+            fwdtplist = [fwdtplist fwdtp];
+            bwdtplist = [bwdtplist bwdtp];
 
-            thisdata = squeeze(Y(trl,chan,X<=tp));
-            o = findchangepts(thisdata,'statistic','linear');
+            o = findchangepts(thisy(chan,thisx<=fwdtp),'statistic','linear');
             if isempty(o)
                 o = NaN;
-            end
-            thisonset = [thisonset o];
-
-            try
-                tp = X(findMin(tp,X)+10);
-                if tp <= thisrt
-                    tplist = [tplist tp];
-                end
-            catch
-                tp = Inf;
-            end
-        end
-
-        tmp_trlonsets = nan(2,nIterations+1);
-        tmp_rltrlonsets = nan(2,nIterations+1);
-        for i = 1:nIterations+1
-
-            if i==1
-                thisrt = rt(trl);
             else
-                thisrt = randsample(0.9:0.01:3,1); %rt(randsample(setdiff(1:length(rt),trl),1)); % either take a random RT from 0.9 to 3 seconds, or randomly pick another trial's RT
+                tmpx = thisx(thisx<=fwdtp);
+                o = tmpx(o);
+            end
+            fwdonsets = [fwdonsets o];
+
+            o = findchangepts(thisy(chan,thisx>=bwdtp),'statistic','linear');
+            if isempty(o)
+                o = NaN;
+            else
+                tmpx = thisx(thisx>=bwdtp);
+                o = tmpx(o);
+            end
+            bwdonsets = [bwdonsets o];
+
+            fwdtp = fwdtp + stepsize;
+            bwdtp = bwdtp - stepsize;
+
+            if fwdtp > max(thisx) || bwdtp < min(thisx)
+                break
             end
 
-            lasto = thisonset(findMin(thisrt,tplist)); % find most significant build up in activity in a window from 0 to response
-%             firsto = thisonset(findMin(tplist,thisx(lasto)));
-%             firsto = mode(thisonset(tplist <= thisx(lasto)));
-
-            if ~isnan(lasto)
-                lasto = thisx(lasto);
-            end
-            if ~isnan(firsto)
-                firsto = thisx(firsto);
-            end
-    
-            tmp_trlonsets(:,i) = [firsto lasto]';
-            tmp_rltrlonsets(:,i) = -(thisrt - [firsto lasto])';
         end
 
-        % estimate "last" onset as most significant change in 1 second window preceding response
-        xidx = X>=(thisrt-onsetlatewindow) & X<thisrt;
-        thisx = X(xidx);
-        lasto = thisx(findchangepts(squeeze(Y(trl,chan,xidx)),'statistic','linear'));
+%         % looking backwards (biaseded towards response time), find the point at which the change times can be split into two groups
+%         thisidx = ~isnan(bwdonsets);
+%         tmpx = bwdtplist(thisidx);
+%         lasto = tmpx(findchangepts(bwdonsets(thisidx),'statistic','mean'));
+% 
+%         % looking forwards (biased towards stimulus onset), find the point at which the change times can be split into two groups BEFORE the response-biased change time
+%         thisidx = ~isnan(fwdonsets) & fwdtplist < lasto;
+%         tmpx = fwdtplist(thisidx);
+%         firsto = tmpx(findchangepts(fwdonsets(thisidx),'statistic','mean'));
 
-        % estimate "first" onset as most significant change prior to the last most significant change
-        xidx = X>onsettimemin & X<lasto;
-        thisx = X(xidx);
-        firsto = thisx(findchangepts(squeeze(Y(trl,chan,xidx)),'statistic','linear'));
+        % take the most frequent onst time in each vector
+        [N, EDGES, BIN] = histcounts(fwdonsets,'binwidth',stepsize);
+        [~,maxbin] = max(N);
+        firsto = mean(fwdonsets(BIN==maxbin));
+
+        [N, EDGES, BIN] = histcounts(bwdonsets,'binwidth',stepsize);
+        [~,maxbin] = max(N);
+        lasto = mean(bwdonsets(BIN==maxbin));
+
+        if firsto > lasto
+            
+        end
 
         tmp_trlonsets = [firsto lasto];
         tmp_rltrlonsets = -(thisrt - [firsto lasto])';
@@ -108,8 +120,7 @@ for i = 1:2
     tmp2 = squeeze(rltrlonsets(:,:,i,1));
     disp([':::::::::::: ' num2str(round(mean(mean(isnan(tmp1)))*100,2)) '% of trials with no identifiable onset time'])
     disp([':::::::::::: Mean onset time = ' num2str(round(nanmean(tmp1(:)),3)) ' seconds'])
-    disp([':::::::::::: Mean onset time = ' num2str(round(nanmean(tmp2(:)),3)) ' seconds response locked)'])
+    disp([':::::::::::: Mean onset time = ' num2str(round(nanmean(tmp2(:)),3)) ' seconds response locked'])
     disp([':::::::::::: Mean no. of onsets after response = ' num2str(nanmean(tmp2(:)>=0))])
 end
-
 end

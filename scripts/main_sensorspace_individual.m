@@ -1000,7 +1000,6 @@ switch locking
 end
 
 filename = [filename '_minclusternum-' num2str(subj_minclusternum)];
-
 load(fullfile('D:\bCFS_EEG_Reanalysis\results\sensorspace',filterTag,[filename '.mat'])); % loads 'STATS' variable
 
 load('D:\bCFS_EEG_Reanalysis\data\Exp2\behav\stai.mat'); % loads 'stai' variable
@@ -1131,6 +1130,14 @@ for st = 3%1:length(standardType)
 %                         end
                         A{s,c}.avg = thisavg;
                     end
+
+%                     % z-score across conditions
+%                     for chan = 1:length(A{s,1}.label)
+%                         for tp = 1:length(A{s,1}.time)
+%                             
+%                         end
+%                     end
+
                 end
                 
                 % For response-locking, make all subjects have the same length
@@ -1159,7 +1166,7 @@ for st = 3%1:length(standardType)
             % Do t test
             cfg = [];
             cfg.neighbours = neighbours;
-            cfg.channel ={'EEG','-M1','-M2'};
+            cfg.channel = {'EEG','-M1','-M2'};
 
             cfg.method = 'montecarlo';
             cfg.tail = 0;
