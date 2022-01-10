@@ -164,7 +164,7 @@ summarisecorr <- function(testname,thisonset,thisdata) {
 
   thisd <- filter(thisdata,onsetType==thisonset)
   
-  if (onsetType!="late") {
+  if (thisonset!="late") {
     p1 <- cor.test(thisd$zonsetSL,thisd$znondecision)
     p2 <- cor.test(thisd$zonsetSL,thisd$zdrift)
     p3 <- cor.test(thisd$zonsetSL,thisd$zboundary)
@@ -323,7 +323,7 @@ md <- d %>%
     diff_onsetPcnt = rep(onsetPcnt[onsetType=="diff"],3),
     late_onsetPcnt = rep(onsetPcnt[onsetType=="late"],3)) %>%
   filter(onsetType=="early") %>%
-  select(-onsetType) %>%
+  # select(-onsetType) %>%
   ungroup() %>%
   as.data.frame()
 md[,grepl("_onset",names(md))] <- lapply(md[,grepl("_onset",names(md))],function(x) scale(x,center=TRUE,scale=FALSE)) %>% as.data.frame()
@@ -343,4 +343,13 @@ summary(m2)
 vif(m2)
 cat_plot(m2,pred=Emotion,modx=Expectation)
 em <- emmeans(m2,pairwise~Emotion*Expectation)
+
+
+
+
+
+# drift rate & slopes
+m3 <- lmer(late_onsetRL ~ Emotion*Expectation + Electrode + (1|Subject),
+           md,REML=F)
+
 
