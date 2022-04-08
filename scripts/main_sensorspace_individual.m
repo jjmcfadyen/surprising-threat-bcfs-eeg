@@ -977,7 +977,7 @@ save(fullfile('D:\bCFS_EEG_Reanalysis\results\sensorspace',filterTag,[savefilena
 
 smoothing = []; % in ms ([] to skip smoothing)
 datatype = 'orig';
-locking = 'stimulus';
+locking = 'response'; % 'stimulus' or 'response'
 subj_minclusternum = 2;
 group_minclusternum = 2;
             
@@ -1077,6 +1077,12 @@ for st = 3%1:length(standardType)
                     gpdata{length(gpdata)}.avg = gpdata{length(gpdata)}.avg-(gpdata{length(gpdata)}.var/2);
                 end
                 
+                cmap = [77, 242, 255;
+                    98, 174, 255;
+                    255, 180, 29;
+                    255, 68, 142]/255;
+
+
                 figure
                 cfg = [];
                 cfg.layout = 'biosemi64.lay';
@@ -1168,20 +1174,25 @@ for st = 3%1:length(standardType)
             cfg.neighbours = neighbours;
             cfg.channel = {'EEG','-M1','-M2'};
 
-            cfg.method = 'montecarlo';
-            cfg.tail = 0;
-            cfg.alpha = .025;
+%             cfg.method = 'montecarlo';
+%             cfg.tail = 0;
+%             cfg.alpha = .025;
+% 
+%             cfg.correctm = 'cluster';
+%             cfg.clusteralpha = .05;
+%             cfg.minnbchan = group_minclusternum;
+%             cfg.numrandomization = 500;
 
-            cfg.correctm = 'cluster';
-            cfg.clusteralpha = .05;
-            cfg.minnbchan = group_minclusternum;
-            cfg.numrandomization = 500;
+            cfg.method = 'analytic';
+            cfg.correctm = 'fdr';
+            cfg.tail = 0;
+            cfg.alpha = 0.025;
 
             if i==9
                 
 %                 ddmvals = [ddm.boundary_C1 ddm.boundary_C2 ddm.boundary_C3 ddm.boundary_C4];
-%                 ddmvals = [ddm.drift_C1 ddm.drift_C2 ddm.drift_C3 ddm.drift_C4];
-                ddmvals = [ddm.nondecision_C1 ddm.nondecision_C2 ddm.nondecision_C3 ddm.nondecision_C4];
+                ddmvals = [ddm.drift_C1 ddm.drift_C2 ddm.drift_C3 ddm.drift_C4];
+%                 ddmvals = [ddm.nondecision_C1 ddm.nondecision_C2 ddm.nondecision_C3 ddm.nondecision_C4];
                 
                 x = cell(N,4); % eeg data
                 y = nan(N,4); % ddm parameters
@@ -1229,39 +1240,53 @@ for st = 3%1:length(standardType)
             end
 
             figure
-            imagesc(1-stat{i}.prob);
+            imagesc(stat{i}.mask); %imagesc(1-stat{i}.prob);
             colormap('hot')
             xlabel('Time')
             ylabel('Channels')
             set(gca,'ytick',1:length(stat{i}.label));
             set(gca,'yticklabels',stat{i}.label);
             title(['Lowest p = ' num2str(min(stat{i}.prob(:)))])
-            set(gcf,'position',[440 -141 484 957])
+            set(gcf,'position',[440  -141 484 957])
             drawnow;
             
+            % Show significant time window/sensors
             sigtime = {};
             sigchan = {};
-            cc = 0;
-            for posneg = 1:2
-                
-                if posneg==1 % positive clusters
-                    thiscluster = stat{i}.posclusters;
-                    thismap = stat{i}.posclusterslabelmat;
-                elseif posneg==2 % negative clusters
-                    thiscluster = stat{i}.negclusters;
-                    thismap = stat{i}.negclusterslabelmat;
-                end
-                
-                if ~isempty(thiscluster)
-                    nclusters = find(extractfield(thiscluster,'prob') <= .05);
-                    for n = 1:length(nclusters)
-                        cc = cc + 1;
-                        sigtime{cc} = stat{i}.time(sum(thismap == n) > 0);
-                        sigchan{cc} = stat{i}.label(sum(thismap == n,2) > 0);
-                    end
+            incluster = false;
+            maskidx = sum(stat{i}.mask)>0;
+            if any(maskidx)
+                maskidx = [find(diff([0 maskidx])>0)', find(diff([maskidx 0])<0)'];
+                for g = 1:size(maskidx,1) 
+                    sigtime{g} = stat{i}.time(maskidx(g,1):maskidx(g,2));
+                    sigchan{g} = stat{i}.label(sum(stat{i}.mask(:,maskidx(g,1):maskidx(g,2)),2)>0);
                 end
             end
-               
+
+%             % Show significant clusters
+%             sigtime = {};
+%             sigchan = {};
+%             cc = 0;
+%             for posneg = 1:2
+%                 
+%                 if posneg==1 % positive clusters
+%                     thiscluster = stat{i}.posclusters;
+%                     thismap = stat{i}.posclusterslabelmat;
+%                 elseif posneg==2 % negative clusters
+%                     thiscluster = stat{i}.negclusters;
+%                     thismap = stat{i}.negclusterslabelmat;
+%                 end
+%                 
+%                 if ~isempty(thiscluster)
+%                     nclusters = find(extractfield(thiscluster,'prob') <= .05);
+%                     for n = 1:length(nclusters)
+%                         cc = cc + 1;
+%                         sigtime{cc} = stat{i}.time(sum(thismap == n) > 0);
+%                         sigchan{cc} = stat{i}.label(sum(thismap == n,2) > 0);
+%                     end
+%                 end
+%             end
+%                
             for j = 1:length(sigtime)
                 
                 figure
@@ -1296,28 +1321,44 @@ for st = 3%1:length(standardType)
             for s = 1:length(A)
                 pdata(s,:,:) = A{s}.avg;
             end
-
             for j = 1:length(sigtime)
                 
                 figure
 
-                y = squeeze(mean(pdata(:,ismember(A{1}.label,sigchan{j}),:),2)); % average over electrodes
-                m = mean(y);
-                sem = std(y)/sqrt(size(y,1));
-                upper = m+sem;
-                lower = m-sem;
-                x = A{1}.time;
-                sigx = x(ismember(A{1}.time,sigtime{j}));
+                if i==9 % sort by DDM parameter value
 
-                patch([x fliplr(x)],[upper fliplr(lower)],'k','facealpha',.2); hold on
-                plot(x,m,'k','linewidth',1.4); hold on
-                plot(x([1 end]),[0 0],'k:','linewidth',1.2); hold on
-                set(gca,'ticklength',[0 0])
-                ax = gca;
-                scatter(sigx,repmat(ax.YLim(1),length(sigx),1),'markerfacecolor','k','markeredgecolor','none'); hold on
+                    groups = quantile(ddmvals,3); % split into low/medium/high
+                    y = [];
+                    for c = 1:length(groups)-1
+                        y(:,:,c) = squeeze(mean(pdata(ddmvals>=groups(c) & ddmvals<=groups(c+1),ismember(A{1}.label,sigchan{j}),:),2)); % average over electrodes
+                    end
+                    cmap = [102, 0, 173;
+                        255, 162, 0]/255;
 
+                else
+                    y = squeeze(mean(pdata(:,ismember(A{1}.label,sigchan{j}),:),2)); % average over electrodes
+                    cmap = [0 0 0];
+                end
+
+                for c = 1:size(y,3)
+                    thisy = squeeze(y(:,:,c));
+                    m = mean(thisy);
+                    sem = std(thisy)/sqrt(size(thisy,1));
+                    upper = m+sem;
+                    lower = m-sem;
+                    x = A{1}.time;
+                    sigx = x(ismember(A{1}.time,sigtime{j}));
+    
+                    patch([x fliplr(x)],[upper fliplr(lower)],cmap(c,:),'facealpha',.2,'edgecolor','none'); hold on
+                    plot(x,m,'color',cmap(c,:),'linewidth',1.4); hold on
+                    plot(x([1 end]),[0 0],'color',cmap(c,:),'linestyle',':','linewidth',1.2); hold on
+                    set(gca,'ticklength',[0 0])
+                    if c==1
+                        ax = gca;
+                        scatter(sigx,repmat(ax.YLim(1),length(sigx),1),'markerfacecolor','k','markeredgecolor','none'); hold on
+                    end
+                end
             end
-
         end
     end
 end
